@@ -256,8 +256,20 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
-    const data = { name: 'leaderboard', description: 'Zeigt den Link zum Ranking an' };
-    await client.application.commands.set([data]);
+
+    const data = { 
+        name: 'leaderboard', 
+        description: 'Zeigt den Link zum Ranking an' 
+    };
+
+    try {
+        // Wir registrieren den Befehl explizit global
+        await client.application.commands.set([data]);
+        console.log('🚀 Slash-Command /leaderboard wurde erfolgreich bei Discord registriert!');
+    } catch (error) {
+        console.error('❌ Fehler beim Registrieren des Befehls:', error);
+    }
 });
 
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
