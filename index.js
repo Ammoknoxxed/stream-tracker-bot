@@ -71,8 +71,9 @@ passport.deserializeUser((obj, done) => done(null, obj));
 passport.use(new Strategy({
     clientID: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: process.env.CALLBACK_URL,
-    scope: ['identify', 'guilds'] // Wir brauchen User-Info und Server-Liste
+    callbackURL: 'https://stream-tracker-bot-production.up.railway.app/auth/discord/callback',
+    scope: ['identify', 'guilds'],
+    proxy: true 
 }, (accessToken, refreshToken, profile, done) => {
     process.nextTick(() => done(null, profile));
 }));
@@ -256,5 +257,6 @@ client.once('ready', () => {
 app.listen(PORT, () => {
     console.log(`✅ Dashboard läuft auf Port ${PORT}`);
 });
+
 
 // --- ENDE DER DATEI ---
