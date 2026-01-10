@@ -1,259 +1,186 @@
-require('dotenv').config();
+const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const express = require('express');
-const mongoose = require('mongoose');
-const session = require('express-session');
 const passport = require('passport');
 const { Strategy } = require('passport-discord');
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const session = require('express-session');
+const mongoose = require('mongoose');
 const path = require('path');
+require('dotenv').config();
 
-// --- 1. BOT SETUP ---
+// --- 1. DATENBANK MODELLE ---
+const guildConfigSchema = new mongoose.Schema({
+    guildId: String,
+    rewards: [{ minutesRequired: Number, roleId: String, roleName: String }]
+});
+const GuildConfig = mongoose.model('GuildConfig', guildConfigSchema);
+
+const streamUserSchema = new mongoose.Schema({
+    userId: String,
+    guildId: String,
+    username: String,
+    totalMinutes: { type: Number, default: 0 },
+    lastStreamStart: Date,
+    isStreaming: { type: Boolean, default: false }
+});
+const StreamUser = mongoose.model('StreamUser', streamUserSchema);
+
+// --- 2. BOT SETUP ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildPresences, // Wichtig um zu sehen ob wer streamt
-        GatewayIntentBits.GuildMembers,   // Wichtig um Rollen zu geben
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildVoiceStates, // WICHTIG für Go Live
         GatewayIntentBits.MessageContent
-    ]
+    ],
+    partials: [Partials.GuildMember, Partials.User, Partials.Presence]
 });
 
+// --- 3. WEB-DASHBOARD SETUP ---
 const app = express();
-
-// --- 2. DATENBANK MODELLE ---
-
-// Hier speichern wir die Einstellungen (Welche Zeit bringt welche Rolle?)
-const ConfigSchema = new mongoose.Schema({
-    guildId: { type: String, required: true, unique: true },
-    rewards: [{
-        minutesRequired: Number, // Benötigte Zeit in Minuten
-        roleId: String,          // Die Belohnungs-Rolle
-        roleName: String         // Name der Rolle (fürs Dashboard)
-    }]
-});
-const GuildConfig = mongoose.model('GuildConfig', ConfigSchema);
-
-// Hier speichern wir die User-Daten
-const UserSchema = new mongoose.Schema({
-    userId: { type: String, required: true },
-    guildId: { type: String, required: true },
-    username: String,
-    avatar: String,
-    totalMinutes: { type: Number, default: 0 }, // Gesamtzeit in Minuten
-    isStreaming: { type: Boolean, default: false },
-    lastStreamStart: { type: Date, default: null } // Wann hat der aktuelle Stream begonnen?
-});
-// Ein User kann nur einmal pro Server existieren
-UserSchema.index({ userId: 1, guildId: 1 }, { unique: true });
-const StreamUser = mongoose.model('StreamUser', UserSchema);
-
-// --- 3. DASHBOARD & AUTH SETUP ---
-
-// Wir nutzen EJS, um die Webseiten anzuzeigen (das ist einfaches HTML mit Variablen)
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-app.use(express.urlencoded({ extended: true })); // Um Formulardaten zu lesen
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
 
-// Session Setup (Damit der Browser eingeloggt bleibt)
+passport.serializeUser((user, done) => done(null, user));
+passport.deserializeUser((obj, done) => done(null, obj));
+
+passport.use(new Strategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: process.env.CALLBACK_URL,
+    scope: ['identify', 'guilds'],
+    proxy: true
+}, (accessToken, refreshToken, profile, done) => {
+    process.nextTick(() => done(null, profile));
+}));
+
 app.use(session({
-    secret: 'super-geheimes-passwort-das-niemand-kennt',
+    secret: 'stream-tracker-secret',
     resave: false,
     saveUninitialized: false
 }));
 
 app.use(passport.initialize());
-app.use(passport.session());
+app.use(session.session());
 
-// Daten speichern/laden für den Login
-passport.serializeUser((user, done) => done(null, user));
-passport.deserializeUser((obj, done) => done(null, obj));
-
-// Die Discord Login Strategie
-passport.use(new Strategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: 'https://stream-tracker-bot-production.up.railway.app/auth/discord/callback',
-    scope: ['identify', 'guilds'],
-    proxy: true 
-}, (accessToken, refreshToken, profile, done) => {
-    process.nextTick(() => done(null, profile));
-}));
-
-// --- 4. STREAM TRACKING LOGIK ---
-
-client.on('presenceUpdate', async (oldPresence, newPresence) => {
-    if (!newPresence || !newPresence.guild) return;
-
-    const userId = newPresence.userId;
-    const guildId = newPresence.guild.id;
-
-    // DEBUG-ZEILE: Zeigt uns in Railway ALLES an, was Discord meldet
-    if (newPresence.activities.length > 0) {
-        console.log(`Debug: ${newPresence.user.username} macht gerade: ${newPresence.activities.map(a => a.name).join(', ')} (Typen: ${newPresence.activities.map(a => a.type).join(', ')})`);
-    }
-    
-    // EXTREM SCHARFE ERKENNUNG:
-    // Wir prüfen auf Streaming-Typ (1), aber auch auf "Go Live" oder Video-Flags
-    const isStreaming = newPresence.activities.some(act => 
-        act.type === 1 || 
-        act.type === 3 || // Watching (manchmal bei Streams)
-        act.name.toLowerCase().includes('live') ||
-        (act.flags && (act.flags.has(512) || act.flags.has(1)))
-    );
-
-    const wasStreaming = oldPresence?.activities.some(act => 
-        act.type === 1 || 
-        act.type === 3 ||
-        act.name.toLowerCase().includes('live') ||
-        (act.flags && (act.flags.has(512) || act.flags.has(1)))
-    );
-
-    // RESTLICHER CODE (START/STOP) BLEIBT GLEICH...
-    if (isStreaming && !wasStreaming) {
-        await StreamUser.findOneAndUpdate(
-            { userId, guildId },
-            { isStreaming: true, lastStreamStart: new Date(), username: newPresence.user.username, avatar: newPresence.user.displayAvatarURL() },
-            { upsert: true }
-        );
-        console.log(`📡 [START] ${newPresence.user.username} wurde erkannt!`);
-    }
-
-    if (!isStreaming && wasStreaming) {
-        const userData = await StreamUser.findOne({ userId, guildId });
-        if (userData && userData.lastStreamStart) {
-            const now = new Date();
-            const minutesStreamed = Math.round((now - userData.lastStreamStart) / 60000); 
-            if (minutesStreamed >= 1) {
-                const updatedUser = await StreamUser.findOneAndUpdate({ userId, guildId }, { $inc: { totalMinutes: minutesStreamed }, isStreaming: false, lastStreamStart: null }, { new: true });
-                console.log(`🛑 [STOP] ${userData.username}: +${minutesStreamed} Min.`);
-                const config = await GuildConfig.findOne({ guildId });
-                if (config) {
-                    const member = await newPresence.guild.members.fetch(userId);
-                    for (const reward of config.rewards) {
-                        if (updatedUser.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                            await member.roles.add(reward.roleId);
-                        }
-                    }
-                }
-            } else {
-                await StreamUser.findOneAndUpdate({ userId, guildId }, { isStreaming: false, lastStreamStart: null });
-            }
-        }
-    }
-});
-
-// --- 5. WEB-ROUTEN (DASHBOARD-STEUERUNG) ---
-
-// Startseite
-app.get('/', (req, res) => {
-    res.render('index', { user: req.user });
-});
-
-// Login-Prozess starten
+// --- ROUTES ---
+app.get('/', (req, res) => res.render('index'));
 app.get('/login', passport.authenticate('discord'));
+app.get('/auth/discord/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => res.redirect('/dashboard'));
 
-// Callback nach dem Login
-app.get('/auth/discord/callback', passport.authenticate('discord', {
-    failureRedirect: '/'
-}), (req, res) => {
-    res.redirect('/dashboard');
-});
-
-// Dashboard Hauptseite (Liste der Server)
 app.get('/dashboard', async (req, res) => {
-    if (!req.user) return res.redirect('/login');
-    
-    // Nur Server anzeigen, auf denen der User Admin ist
+    if (!req.isAuthenticated()) return res.redirect('/');
     const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-// Einstellungen für einen spezifischen Server
 app.get('/dashboard/:guildId', async (req, res) => {
-    if (!req.user) return res.redirect('/login');
-    
+    if (!req.isAuthenticated()) return res.redirect('/');
     const guildId = req.params.guildId;
     const guild = client.guilds.cache.get(guildId);
-    
     if (!guild) return res.send("Bot ist nicht auf diesem Server!");
 
-    // Daten aus Datenbank laden
     let config = await GuildConfig.findOne({ guildId });
-    if (!config) config = { rewards: [] };
+    if (!config) config = await GuildConfig.create({ guildId, rewards: [] });
 
     const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
-    const roles = guild.roles.cache.map(r => ({ id: r.id, name: r.name }));
+    const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
 
-    res.render('settings', { 
-        user: req.user, 
-        guild, 
-        config, 
-        trackedUsers, 
-        roles 
-    });
+    res.render('settings', { guild, config, trackedUsers, roles });
 });
 
-// Einstellungen speichern
 app.post('/dashboard/:guildId/save', async (req, res) => {
-    if (!req.user) return res.send("Nicht eingeloggt");
-    
-    const { guildId } = req.params;
     const { minutes, roleId } = req.body;
-    
-    const guild = client.guilds.cache.get(guildId);
+    const guild = client.guilds.cache.get(req.params.guildId);
     const role = guild.roles.cache.get(roleId);
-
+    
     await GuildConfig.findOneAndUpdate(
-        { guildId },
-        { $push: { rewards: { minutesRequired: minutes, roleId, roleName: role.name } } },
+        { guildId: req.params.guildId },
+        { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } }
+    );
+    res.redirect(`/dashboard/${req.params.guildId}`);
+});
+
+app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
+    const { rewardIndex } = req.body;
+    const config = await GuildConfig.findOne({ guildId: req.params.guildId });
+    config.rewards.splice(rewardIndex, 1);
+    await config.save();
+    res.redirect(`/dashboard/${req.params.guildId}`);
+});
+
+app.get('/logout', (req, res) => {
+    req.logout(() => res.redirect('/'));
+});
+
+// --- 4. TRACKING LOGIK ---
+
+async function handleStreamStart(userId, guildId, username) {
+    await StreamUser.findOneAndUpdate(
+        { userId, guildId },
+        { isStreaming: true, lastStreamStart: new Date(), username },
         { upsert: true }
     );
+    console.log(`📡 [START] ${username} wird getrackt.`);
+}
 
-    res.redirect(`/dashboard/${guildId}`);
-});
+async function handleStreamStop(userId, guildId) {
+    const userData = await StreamUser.findOne({ userId, guildId });
+    if (!userData || !userData.lastStreamStart) return;
 
-// Belohnung löschen
-app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
-    const { guildId } = req.params;
-    const { rewardIndex } = req.body;
-    
-    const config = await GuildConfig.findOne({ guildId });
-    if (config) {
-        config.rewards.splice(rewardIndex, 1);
-        await config.save();
+    const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
+    userData.isStreaming = false;
+    userData.lastStreamStart = null;
+
+    if (minutes >= 1) {
+        userData.totalMinutes += minutes;
+        console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min. Gesamt: ${userData.totalMinutes}`);
+        
+        const config = await GuildConfig.findOne({ guildId });
+        if (config) {
+            try {
+                const guild = client.guilds.cache.get(guildId);
+                const member = await guild.members.fetch(userId);
+                for (const reward of config.rewards) {
+                    if (userData.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
+                        await member.roles.add(reward.roleId);
+                        console.log(`🏆 Rolle ${reward.roleName} an ${userData.username} vergeben.`);
+                    }
+                }
+            } catch (err) { console.error("Rollen-Fehler:", err.message); }
+        }
     }
-    res.redirect(`/dashboard/${guildId}`);
+    await userData.save();
+}
+
+// Event: Go Live / Voice Streaming
+client.on('voiceStateUpdate', (oldState, newState) => {
+    if (!oldState.streaming && newState.streaming) {
+        handleStreamStart(newState.id, newState.guild.id, newState.member.user.username);
+    } else if (oldState.streaming && !newState.streaming) {
+        handleStreamStop(oldState.id, oldState.guild.id);
+    }
 });
 
-// Logout
-app.get('/logout', (req, res) => {
-    req.logout(() => {
-        res.redirect('/');
-    });
+// Event: Twitch/YouTube Status
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+    if (!newPresence || !newPresence.guild) return;
+    const isStreaming = newPresence.activities.some(a => a.type === 1);
+    const wasStreaming = oldPresence?.activities.some(a => a.type === 1);
+
+    if (isStreaming && !wasStreaming) {
+        handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username);
+    } else if (!isStreaming && wasStreaming) {
+        handleStreamStop(newPresence.userId, newPresence.guild.id);
+    }
 });
 
-// --- 6. STARTVORGANG (DATENBANK & BOT) ---
-
-const PORT = process.env.PORT || 3000;
-
-// Verbindung zur Datenbank herstellen
+// --- 5. START ---
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅ Erfolgreich mit MongoDB verbunden'))
-    .catch(err => console.error('❌ MongoDB Verbindungsfehler:', err));
+    .then(() => console.log('✅ MongoDB verbunden'))
+    .catch(err => console.error('❌ MongoDB Fehler:', err));
 
-// Bot einloggen
 client.login(process.env.TOKEN);
-
-client.once('ready', () => {
-    console.log(`✅ Bot ist online als ${client.user.tag}`);
-});
-
-// Webserver starten
-app.listen(PORT, () => {
-    console.log(`✅ Dashboard läuft auf Port ${PORT}`);
-});
-
-
-// --- ENDE DER DATEI ---
-
-
-
+client.once('ready', () => console.log(`✅ Bot online: ${client.user.tag}`));
+app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
