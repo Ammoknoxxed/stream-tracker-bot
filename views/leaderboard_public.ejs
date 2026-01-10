@@ -23,10 +23,34 @@
         .podium-2 { order: 1; width: 180px; height: 230px; }
         .podium-3 { order: 3; width: 180px; height: 230px; }
 
-        .podium-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px; }
+        .podium-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px; transition: 0.3s; }
         .podium-1 .podium-avatar { width: 100px; height: 100px; border-color: #fbbf24; }
         
         .crown-icon { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 2rem; }
+
+        /* NEU: Live-Effekte */
+        .glow-streaming {
+            border-color: #ff0055 !important;
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.6);
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 5px rgba(255, 0, 85, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(255, 0, 85, 0.9); }
+            100% { box-shadow: 0 0 5px rgba(255, 0, 85, 0.5); }
+        }
+
+        .badge-live {
+            background-color: #ff0055;
+            font-size: 0.65rem;
+            letter-spacing: 1px;
+            animation: blinker 1.5s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0.5; }
+        }
     </style>
 </head>
 <body>
@@ -42,8 +66,18 @@
         <% trackedUsers.slice(0, 3).forEach((user, index) => { %>
             <div class="podium-card podium-<%= index + 1 %> glass-card">
                 <% if(index === 0) { %><i class="fas fa-crown crown-icon rank-gold"></i><% } %>
-                <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" class="podium-avatar <%= user.isStreaming ? 'border-danger' : '' %>">
-                <h4 class="mb-1 text-truncate"><%= user.username %></h4>
+                
+                <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                     class="podium-avatar <%= user.isStreaming ? 'glow-streaming' : '' %>">
+                
+                <h4 class="mb-1 text-truncate">
+                    <%= user.username %>
+                </h4>
+
+                <% if(user.isStreaming) { %>
+                    <span class="badge badge-live mb-2">LIVE</span>
+                <% } %>
+
                 <div class="text-accent fw-bold"><%= user.totalMinutes %> Min</div>
                 <div class="small opacity-50">Platz <%= index + 1 %></div>
             </div>
@@ -67,10 +101,12 @@
                     <td class="d-flex align-items-center">
                         <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                              style="width: 35px; height: 35px; border-radius: 50%;" 
-                             class="me-3 border <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
+                             class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
+                        
                         <span class="fw-bold"><%= user.username %></span>
+                        
                         <% if(user.isStreaming) { %>
-                            <span class="ms-2 badge bg-danger" style="font-size: 0.6rem; animation: pulse 2s infinite;">LIVE</span>
+                            <span class="ms-2 badge badge-live">LIVE</span>
                         <% } %>
                     </td>
                     <td class="text-end pe-4">
@@ -90,6 +126,13 @@
         <p>Daten werden bei Stream-Ende aktualisiert</p>
     </div>
 </div>
+
+<script>
+    // Automatische Aktualisierung alle 60 Sekunden, um Live-Status zu prüfen
+    setTimeout(function(){
+       window.location.reload();
+    }, 60000);
+</script>
 
 </body>
 </html>
