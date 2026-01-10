@@ -66,7 +66,6 @@ const getRankInfo = (mins) => {
     return { current, next, progress };
 };
 
-// Hilfsfunktion für die Anzeige: X Std. Y Min.
 const formatFullTime = (totalMins) => {
     const hours = Math.floor(totalMins / 60);
     const mins = Math.floor(totalMins % 60);
@@ -95,7 +94,14 @@ const formatFullTime = (totalMins) => {
             }
         %>
             <div class="podium-card podium-<%= index + 1 %> glass-card">
-                <% if(index === 0) { %><i class="fas fa-crown crown-icon rank-gold"></i><% } %>
+                <% if(index === 0) { %>
+                    <i class="fas fa-crown crown-icon" style="color: #fbbf24; text-shadow: 0 0 15px rgba(251, 191, 36, 0.6);"></i>
+                <% } else if(index === 1) { %>
+                    <i class="fas fa-medal crown-icon" style="color: #cbd5e1; text-shadow: 0 0 15px rgba(203, 213, 225, 0.6);"></i>
+                <% } else if(index === 2) { %>
+                    <i class="fas fa-medal crown-icon" style="color: #cd7f32; text-shadow: 0 0 15px rgba(205, 127, 50, 0.6);"></i>
+                <% } %>
+
                 <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                      class="podium-avatar <%= user.isStreaming ? 'glow-streaming' : '' %>">
                 <h4 class="mb-1 text-truncate"><%= user.username %></h4>
@@ -196,7 +202,6 @@ const formatFullTime = (totalMins) => {
         });
     }
     setInterval(updateLive, 10000);
-    // Seite alle 5 Min neu laden um Ränge zu sortieren
     setTimeout(() => { window.location.reload(); }, 300000);
 </script>
 
