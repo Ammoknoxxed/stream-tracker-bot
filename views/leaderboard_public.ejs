@@ -36,30 +36,41 @@
                         <th class="text-end pe-4">Zeit</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <% trackedUsers.forEach((user, index) => { %>
-                    <tr>
-                        <td class="ps-4">
-                            <% if(index === 0) { %><i class="fas fa-trophy rank-1"></i>
-                            <% } else if(index === 1) { %><i class="fas fa-medal rank-2"></i>
-                            <% } else if(index === 2) { %><i class="fas fa-medal rank-3"></i>
-                            <% } else { %> <%= index + 1 %> <% } %>
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <% if(user.isStreaming) { %><span class="live-dot"></span><% } %>
-                                <span><%= user.username %></span>
-                            </div>
-                        </td>
-                        <td class="text-end pe-4 fw-bold text-info">
-                            <%= user.totalMinutes %> <span class="small opacity-50 fw-normal">Min.</span>
-                        </td>
-                    </tr>
-                    <% }) %>
-                    <% if(trackedUsers.length === 0) { %>
-                        <tr><td colspan="3" class="text-center py-5">Noch keine Stream-Daten vorhanden.</td></tr>
-                    <% } %>
-                </tbody>
+<tbody>
+    <% trackedUsers.forEach((user, index) => { %>
+    <tr>
+        <td class="ps-4">
+            <% if(index === 0) { %><i class="fas fa-trophy rank-1"></i>
+            <% } else if(index === 1) { %><i class="fas fa-medal rank-2"></i>
+            <% } else if(index === 2) { %><i class="fas fa-medal rank-3"></i>
+            <% } else { %> <%= index + 1 %> <% } %>
+        </td>
+
+        <td class="d-flex align-items-center">
+            <div class="position-relative me-3">
+                <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                     style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover;" 
+                     class="border border-2 <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
+                
+                <% if(user.isStreaming) { %>
+                    <span class="position-absolute translate-middle badge rounded-pill bg-danger" 
+                          style="font-size: 0.5rem; bottom: -10px; left: 21px; border: 2px solid #16213e;">
+                        LIVE
+                    </span>
+                <% } %>
+            </div>
+            <span class="fw-bold"><%= user.username %></span>
+        </td>
+        <td class="text-end pe-4 fw-bold text-info">
+            <%= user.totalMinutes %> <span class="small opacity-50 fw-normal">Min.</span>
+        </td>
+    </tr>
+    <% }) %>
+
+    <% if(trackedUsers.length === 0) { %>
+        <tr><td colspan="3" class="text-center py-5">Noch keine Stream-Daten vorhanden.</td></tr>
+    <% } %>
+</tbody>
             </table>
         </div>
     </div>
