@@ -130,6 +130,17 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
+app.post('/dashboard/:guildId/delete-user', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/');
+    const { userId } = req.body;
+    const guildId = req.params.guildId;
+    
+    // Löscht den Eintrag des Users für diesen spezifischen Server
+    await StreamUser.findOneAndDelete({ userId, guildId });
+    
+    res.redirect(`/dashboard/${guildId}`);
+});
+
 app.get('/logout', (req, res) => {
     req.logout(() => res.redirect('/'));
 });
@@ -224,5 +235,6 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', () => console.log(`✅ Bot online: ${client.user.tag}`));
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
