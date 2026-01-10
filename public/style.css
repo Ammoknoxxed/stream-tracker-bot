@@ -1,0 +1,48 @@
+:root {
+    --bg-dark: #0f172a;
+    --bg-card: rgba(30, 41, 59, 0.7);
+    --accent: #38bdf8; /* Sky Blue */
+    --accent-glow: rgba(56, 189, 248, 0.3);
+    --danger: #f43f5e;
+    --text-main: #f1f5f9;
+}
+
+body {
+    background: radial-gradient(circle at top right, #1e1b4b, #0f172a);
+    color: var(--text-main);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+}
+
+.glass-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.btn-cyber {
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 15px var(--accent-glow);
+}
+
+.btn-cyber:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 25px var(--accent);
+    background: #fff;
+}
+
+.nav-link { color: var(--text-main); opacity: 0.8; }
+.nav-link:hover { opacity: 1; color: var(--accent); }
+
+/* Leaderboard Rank Highlights */
+.rank-gold { color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+.rank-silver { color: #94a3b8; }
+.rank-bronze { color: #b45309; }
