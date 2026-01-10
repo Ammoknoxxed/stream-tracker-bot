@@ -85,76 +85,57 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
 
     const userId = newPresence.userId;
     const guildId = newPresence.guild.id;
+
+    // DEBUG-ZEILE: Zeigt uns in Railway ALLES an, was Discord meldet
+    if (newPresence.activities.length > 0) {
+        console.log(`Debug: ${newPresence.user.username} macht gerade: ${newPresence.activities.map(a => a.name).join(', ')} (Typen: ${newPresence.activities.map(a => a.type).join(', ')})`);
+    }
     
-    // VERBESSERTE ERKENNUNG:
-    // Wir prüfen auf "streaming" Flag ODER Typ 1 (Streaming) ODER Aktivitäten wie "Go Live"
+    // EXTREM SCHARFE ERKENNUNG:
+    // Wir prüfen auf Streaming-Typ (1), aber auch auf "Go Live" oder Video-Flags
     const isStreaming = newPresence.activities.some(act => 
         act.type === 1 || 
-        act.type === 2 || 
-        (act.flags && act.flags.has(512)) || // 512 ist das interne Flag für "STREAMING"
-        act.name === 'Go Live'
+        act.type === 3 || // Watching (manchmal bei Streams)
+        act.name.toLowerCase().includes('live') ||
+        (act.flags && (act.flags.has(512) || act.flags.has(1)))
     );
 
     const wasStreaming = oldPresence?.activities.some(act => 
         act.type === 1 || 
-        act.type === 2 || 
-        (act.flags && act.flags.has(512)) || 
-        act.name === 'Go Live'
+        act.type === 3 ||
+        act.name.toLowerCase().includes('live') ||
+        (act.flags && (act.flags.has(512) || act.flags.has(1)))
     );
 
-    // FALL A: User startet den Stream
+    // RESTLICHER CODE (START/STOP) BLEIBT GLEICH...
     if (isStreaming && !wasStreaming) {
         await StreamUser.findOneAndUpdate(
             { userId, guildId },
-            { 
-                isStreaming: true, 
-                lastStreamStart: new Date(),
-                username: newPresence.user.username,
-                avatar: newPresence.user.displayAvatarURL()
-            },
+            { isStreaming: true, lastStreamStart: new Date(), username: newPresence.user.username, avatar: newPresence.user.displayAvatarURL() },
             { upsert: true }
         );
-        console.log(`📡 [START] ${newPresence.user.username} streamt jetzt.`);
+        console.log(`📡 [START] ${newPresence.user.username} wurde erkannt!`);
     }
 
-    // FALL B: User beendet den Stream
     if (!isStreaming && wasStreaming) {
         const userData = await StreamUser.findOne({ userId, guildId });
         if (userData && userData.lastStreamStart) {
             const now = new Date();
             const minutesStreamed = Math.round((now - userData.lastStreamStart) / 60000); 
-
-            if (minutesStreamed >= 1) { // Nur speichern wenn mind. 1 Minute
-                const updatedUser = await StreamUser.findOneAndUpdate(
-                    { userId, guildId },
-                    { 
-                        $inc: { totalMinutes: minutesStreamed }, 
-                        isStreaming: false, 
-                        lastStreamStart: null 
-                    },
-                    { new: true }
-                );
-
-                console.log(`🛑 [STOP] ${userData.username} fertig. +${minutesStreamed} Min. Gesamt: ${updatedUser.totalMinutes}`);
-                
-                // --- ROLLEN-CHECK ---
+            if (minutesStreamed >= 1) {
+                const updatedUser = await StreamUser.findOneAndUpdate({ userId, guildId }, { $inc: { totalMinutes: minutesStreamed }, isStreaming: false, lastStreamStart: null }, { new: true });
+                console.log(`🛑 [STOP] ${userData.username}: +${minutesStreamed} Min.`);
                 const config = await GuildConfig.findOne({ guildId });
-                if (config && config.rewards.length > 0) {
-                    try {
-                        const member = await newPresence.guild.members.fetch(userId);
-                        for (const reward of config.rewards) {
-                            if (updatedUser.totalMinutes >= reward.minutesRequired) {
-                                if (!member.roles.cache.has(reward.roleId)) {
-                                    await member.roles.add(reward.roleId);
-                                    console.log(`🏆 Rolle @${reward.roleName} an ${userData.username} vergeben.`);
-                                }
-                            }
+                if (config) {
+                    const member = await newPresence.guild.members.fetch(userId);
+                    for (const reward of config.rewards) {
+                        if (updatedUser.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
+                            await member.roles.add(reward.roleId);
                         }
-                    } catch (e) { console.log("Rollen-Fehler:", e.message); }
+                    }
                 }
             } else {
                 await StreamUser.findOneAndUpdate({ userId, guildId }, { isStreaming: false, lastStreamStart: null });
-                console.log(`⏳ Stream von ${userData.username} war kürzer als 1 Minute (nicht gezählt).`);
             }
         }
     }
@@ -273,5 +254,6 @@ app.listen(PORT, () => {
 
 
 // --- ENDE DER DATEI ---
+
 
 
