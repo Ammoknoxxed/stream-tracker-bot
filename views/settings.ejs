@@ -6,35 +6,33 @@
     <title>StreamTracker - <%= guild.name %></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body { background-color: #1a1a2e; color: #fff; }
-        .card { background-color: #16213e; border: none; color: #fff; border-radius: 15px; margin-bottom: 20px; }
-        .card-header { background-color: #0f3460; border-radius: 15px 15px 0 0 !important; font-weight: bold; }
-        .btn-primary { background-color: #e94560; border: none; }
-        .btn-primary:hover { background-color: #cf3a54; }
-        .leaderboard-row { transition: 0.3s; border-bottom: 1px solid #0f3460; }
-        .leaderboard-row:hover { background-color: #0f3460; }
-        .rank-1 { color: #ffd700; font-size: 1.5rem; } /* Gold */
-        .rank-2 { color: #c0c0c0; font-size: 1.3rem; } /* Silber */
-        .rank-3 { color: #cd7f32; font-size: 1.1rem; } /* Bronze */
-    </style>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+
 <div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1><i class="fas fa-chart-line me-2 text-primary"></i> <%= guild.name %></h1>
-        <a href="/dashboard" class="btn btn-outline-light">Zurück</a>
+    <div class="d-flex justify-content-between align-items-center mb-5 glass-card p-4">
+        <div class="d-flex align-items-center">
+            <% if(guild.icon) { %>
+                <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="rounded-circle me-3" style="width: 50px;">
+            <% } %>
+            <h1 class="h3 mb-0"><%= guild.name %> <span class="text-accent small">Dashboard</span></h1>
+        </div>
+        <a href="/dashboard" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i> Zurück</a>
     </div>
 
     <div class="row">
-        <div class="col-lg-8">
-            <div class="card shadow">
-                <div class="card-header"><i class="fas fa-trophy me-2"></i> Stream-Leaderboard</div>
-                <div class="card-body p-0">
-                    <table class="table table-dark table-hover mb-0">
+        <div class="col-lg-8 mb-4">
+            <div class="glass-card h-100">
+                <div class="p-4 border-bottom border-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-trophy text-accent me-2"></i> Stream-Leaderboard</h5>
+                    <span class="badge bg-dark"><%= trackedUsers.length %> User getrackt</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
                         <thead>
                             <tr>
-                                <th class="ps-4">Platz</th>
+                                <th class="ps-4">Rank</th>
                                 <th>User</th>
                                 <th>Minuten</th>
                                 <th class="text-end pe-4">Aktion</th>
@@ -42,26 +40,37 @@
                         </thead>
                         <tbody>
                             <% trackedUsers.forEach((user, index) => { %>
-                            <tr class="leaderboard-row align-middle">
+                            <tr>
                                 <td class="ps-4">
-                                    <% if(index === 0) { %> <i class="fas fa-crown rank-1"></i> 
-                                    <% } else if(index === 1) { %> <i class="fas fa-medal rank-2"></i>
-                                    <% } else if(index === 2) { %> <i class="fas fa-medal rank-3"></i>
-                                    <% } else { %> #<%= index + 1 %> <% } %>
+                                    <% if(index === 0) { %><i class="fas fa-crown rank-gold"></i>
+                                    <% } else if(index === 1) { %><i class="fas fa-medal rank-silver"></i>
+                                    <% } else if(index === 2) { %><i class="fas fa-medal rank-bronze"></i>
+                                    <% } else { %><span class="opacity-50 ms-1">#<%= index + 1 %></span><% } %>
                                 </td>
-                                <td>
-                                    <strong><%= user.username %></strong>
-                                    <% if(user.isStreaming) { %> <span class="badge bg-danger ms-2">LIVE</span> <% } %>
+                                <td class="d-flex align-items-center">
+                                    <div class="position-relative me-3">
+                                        <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                                             style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" 
+                                             class="border border-2 <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
+                                        <% if(user.isStreaming) { %>
+                                            <span class="position-absolute translate-middle badge rounded-pill bg-danger" 
+                                                  style="font-size: 0.5rem; bottom: -12px; left: 20px; border: 2px solid var(--bg-dark);">LIVE</span>
+                                        <% } %>
+                                    </div>
+                                    <span class="fw-bold"><%= user.username %></span>
                                 </td>
-                                <td><span class="text-info fw-bold"><%= user.totalMinutes %></span> Min.</td>
+                                <td><span class="text-accent fw-bold"><%= user.totalMinutes %></span> <span class="small opacity-50">Min</span></td>
                                 <td class="text-end pe-4">
                                     <form action="/dashboard/<%= guild.id %>/delete-user" method="POST" onsubmit="return confirm('Statistik wirklich löschen?')">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
-                                        <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                        <button class="btn btn-link text-danger p-0"><i class="fas fa-trash-alt"></i></button>
                                     </form>
                                 </td>
                             </tr>
                             <% }) %>
+                            <% if(trackedUsers.length === 0) { %>
+                                <tr><td colspan="4" class="text-center py-5 opacity-50">Noch keine Daten vorhanden.</td></tr>
+                            <% } %>
                         </tbody>
                     </table>
                 </div>
@@ -69,50 +78,57 @@
         </div>
 
         <div class="col-lg-4">
-            <div class="card shadow mb-4">
-                <div class="card-header">Rollen-Belohnungen</div>
-                <div class="card-body">
-                    <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-3">
-                        <input type="number" name="minutes" class="form-control mb-2" placeholder="Minuten" required>
-                        <select name="roleId" class="form-select mb-2">
-                            <% roles.forEach(role => { %>
-                                <option value="<%= role.id %>"><%= role.name %></option>
-                            <% }) %>
-                        </select>
-                        <button class="btn btn-primary w-100">Hinzufügen</button>
-                    </form>
-                    <hr>
+            
+            <div class="glass-card p-4 mb-4">
+                <h5 class="mb-3 text-accent"><i class="fas fa-gift me-2"></i> Belohnungen</h5>
+                <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-4">
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text bg-dark text-white border-secondary">Min</span>
+                        <input type="number" name="minutes" class="form-control bg-transparent text-white border-secondary" placeholder="z.B. 60" required>
+                    </div>
+                    <select name="roleId" class="form-select form-select-sm bg-dark text-white border-secondary mb-2">
+                        <% roles.forEach(role => { %>
+                            <option value="<%= role.id %>">@<%= role.name %></option>
+                        <% }) %>
+                    </select>
+                    <button class="btn btn-cyber btn-sm w-100">Hinzufügen</button>
+                </form>
+
+                <div class="reward-list">
                     <% config.rewards.forEach((r, i) => { %>
-                        <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-dark rounded">
-                            <span><%= r.minutesRequired %>m -> @<%= r.roleName %></span>
+                        <div class="d-flex justify-content-between align-items-center p-2 mb-2 rounded bg-white bg-opacity-5 small">
+                            <span><i class="fas fa-check-circle text-success me-1"></i> <strong><%= r.minutesRequired %>m</strong> &rarr; @<%= r.roleName %></span>
                             <form action="/dashboard/<%= guild.id %>/delete-reward" method="POST">
                                 <input type="hidden" name="rewardIndex" value="<%= i %>">
-                                <button class="btn btn-sm text-danger"><i class="fas fa-times"></i></button>
+                                <button class="btn btn-link text-danger p-0 ms-2"><i class="fas fa-times-circle"></i></button>
                             </form>
                         </div>
                     <% }) %>
                 </div>
             </div>
 
-            <div class="card shadow">
-                <div class="card-header">Kanäle</div>
-                <div class="card-body">
-                    <form action="/dashboard/<%= guild.id %>/save-channels" method="POST">
-                        <div style="max-height: 300px; overflow-y: auto;">
-                            <% channels.forEach(ch => { %>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="channels" value="<%= ch.id %>" 
-                                    <%= config.allowedChannels.includes(ch.id) ? 'checked' : '' %>>
-                                    <label class="form-check-label small"><%= ch.type === 4 ? '📁' : '🔊' %> <%= ch.name %></label>
-                                </div>
-                            <% }) %>
-                        </div>
-                        <button class="btn btn-sm btn-primary w-100 mt-3">Speichern</button>
-                    </form>
-                </div>
+            <div class="glass-card p-4">
+                <h5 class="mb-3 text-accent"><i class="fas fa-microphone-lines me-2"></i> Kanäle</h5>
+                <p class="small opacity-50">Wähle die erlaubten Voice-Channels:</p>
+                <form action="/dashboard/<%= guild.id %>/save-channels" method="POST">
+                    <div class="channel-selector mb-3 p-2 bg-dark bg-opacity-50 rounded" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);">
+                        <% channels.forEach(ch => { %>
+                            <div class="form-check small mb-1">
+                                <input class="form-check-input" type="checkbox" name="channels" value="<%= ch.id %>" id="ch-<%= ch.id %>"
+                                <%= config.allowedChannels.includes(ch.id) ? 'checked' : '' %>>
+                                <label class="form-check-label" for="ch-<%= ch.id %>">
+                                    <%= ch.type === 4 ? '📁' : '🔊' %> <%= ch.name %>
+                                </label>
+                            </div>
+                        <% }) %>
+                    </div>
+                    <button class="btn btn-cyber btn-sm w-100">Kanäle Speichern</button>
+                </form>
             </div>
+
         </div>
     </div>
 </div>
+
 </body>
 </html>
