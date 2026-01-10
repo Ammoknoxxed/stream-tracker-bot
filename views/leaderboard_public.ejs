@@ -19,16 +19,16 @@
             padding: 20px; text-align: center; position: relative; transition: 0.3s;
         }
         .podium-card:hover { transform: translateY(-10px); border-color: var(--accent); }
-        .podium-1 { order: 2; width: 220px; height: 280px; border: 2px solid #fbbf24; box-shadow: 0 0 30px rgba(251, 191, 36, 0.2); }
-        .podium-2 { order: 1; width: 180px; height: 230px; }
-        .podium-3 { order: 3; width: 180px; height: 230px; }
+        .podium-1 { order: 2; width: 220px; height: 320px; border: 2px solid #fbbf24; box-shadow: 0 0 30px rgba(251, 191, 36, 0.2); }
+        .podium-2 { order: 1; width: 180px; height: 260px; }
+        .podium-3 { order: 3; width: 180px; height: 260px; }
 
         .podium-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px; transition: 0.3s; }
         .podium-1 .podium-avatar { width: 100px; height: 100px; border-color: #fbbf24; }
         
         .crown-icon { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 2rem; }
 
-        /* NEU: Live-Effekte */
+        /* Live-Effekte */
         .glow-streaming {
             border-color: #ff0055 !important;
             box-shadow: 0 0 15px rgba(255, 0, 85, 0.6);
@@ -48,12 +48,55 @@
             animation: blinker 1.5s linear infinite;
         }
 
-        @keyframes blinker {
-            50% { opacity: 0.5; }
+        @keyframes blinker { 50% { opacity: 0.5; } }
+
+        /* Progress Bar Styling */
+        .progress-custom {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
         }
     </style>
 </head>
 <body>
+
+<% 
+// Ranking Definition
+const ranks = [
+    { min: 18000, name: "GOD OF MAX WIN", color: "#ffffff" },
+    { min: 16800, name: "Casino Imperator", color: "#ff4500" },
+    { min: 15600, name: "Jackpot Legende", color: "#f1c40f" },
+    { min: 14100, name: "Haus Elite", color: "#d35400" },
+    { min: 12300, name: "Zucker Baron", color: "#e91e63" },
+    { min: 10500, name: "High Roller", color: "#8e44ad" },
+    { min: 8700,  name: "Vollbild Jäger", color: "#00d2ff" },
+    { min: 7020,  name: "Multi König", color: "#1a5276" },
+    { min: 5520,  name: "Scatter Profi", color: "#2980b9" },
+    { min: 4200,  name: "Bonus Shopper", color: "#3498db" },
+    { min: 3120,  name: "Risiko Experte", color: "#145a32" },
+    { min: 2220,  name: "Big Gambler", color: "#1f8b4c" },
+    { min: 1500,  name: "Rejuicer", color: "#1db954" },
+    { min: 960,   name: "Bonus Magnet", color: "#2ecc71" },
+    { min: 540,   name: "Stammgast", color: "#e5e4e2" },
+    { min: 240,   name: "Dauerdreher", color: "#dcddde" },
+    { min: 90,    name: "Walzen Flüsterer", color: "#7f8c8d" },
+    { min: 30,    name: "Glücksjäger", color: "#bdc3c7" },
+    { min: 0,     name: "Casino Gast", color: "#95a5a6" }
+];
+
+const getRankInfo = (mins) => {
+    const current = ranks.find(r => mins >= r.min);
+    const nextIndex = ranks.indexOf(current) - 1;
+    const next = nextIndex >= 0 ? ranks[nextIndex] : null;
+    let progress = 100;
+    if (next) {
+        progress = Math.floor(((mins - current.min) / (next.min - current.min)) * 100);
+    }
+    return { current, next, progress };
+};
+%>
 
 <div class="container leaderboard-container">
     <div class="text-center mb-5">
@@ -63,16 +106,20 @@
 
     <% if(trackedUsers.length >= 1) { %>
     <div class="top-three">
-        <% trackedUsers.slice(0, 3).forEach((user, index) => { %>
+        <% trackedUsers.slice(0, 3).forEach((user, index) => { 
+            const info = getRankInfo(user.totalMinutes);
+        %>
             <div class="podium-card podium-<%= index + 1 %> glass-card">
                 <% if(index === 0) { %><i class="fas fa-crown crown-icon rank-gold"></i><% } %>
                 
                 <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                      class="podium-avatar <%= user.isStreaming ? 'glow-streaming' : '' %>">
                 
-                <h4 class="mb-1 text-truncate">
-                    <%= user.username %>
-                </h4>
+                <h4 class="mb-1 text-truncate"><%= user.username %></h4>
+                
+                <div style="color: <%= info.current.color %>; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px;">
+                    <%= info.current.name %>
+                </div>
 
                 <% if(user.isStreaming) { %>
                     <span class="badge badge-live mb-2">LIVE</span>
@@ -86,28 +133,42 @@
     <% } %>
 
     <div class="glass-card overflow-hidden">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 text-white">
             <thead class="bg-dark bg-opacity-50">
                 <tr>
                     <th class="ps-4 py-3">#</th>
-                    <th>User</th>
+                    <th>User & Rang</th>
                     <th class="text-end pe-4">Gesamtzeit</th>
                 </tr>
             </thead>
             <tbody>
-                <% trackedUsers.slice(3).forEach((user, index) => { %>
+                <% trackedUsers.slice(3).forEach((user, index) => { 
+                    const info = getRankInfo(user.totalMinutes);
+                %>
                 <tr class="border-bottom border-secondary border-opacity-10">
                     <td class="ps-4 opacity-50">#<%= index + 4 %></td>
-                    <td class="d-flex align-items-center">
+                    <td class="d-flex align-items-center py-3">
                         <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
-                             style="width: 35px; height: 35px; border-radius: 50%;" 
+                             style="width: 40px; height: 40px; border-radius: 50%;" 
                              class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
                         
-                        <span class="fw-bold"><%= user.username %></span>
-                        
-                        <% if(user.isStreaming) { %>
-                            <span class="ms-2 badge badge-live">LIVE</span>
-                        <% } %>
+                        <div class="flex-grow-1" style="max-width: 250px;">
+                            <div class="d-flex align-items-center">
+                                <span class="fw-bold me-2"><%= user.username %></span>
+                                <% if(user.isStreaming) { %><span class="badge badge-live" style="font-size: 0.5rem;">LIVE</span><% } %>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between align-items-center mt-1" style="font-size: 0.65rem;">
+                                <span style="color: <%= info.current.color %>; font-weight: 800; text-transform: uppercase;"><%= info.current.name %></span>
+                                <% if(info.next) { %><span class="opacity-50 text-end">Next: <%= info.next.min %>m</span><% } %>
+                            </div>
+                            
+                            <% if(info.next) { %>
+                            <div class="progress-custom">
+                                <div class="progress-bar" style="width: <%= info.progress %>%; background: <%= info.current.color %>;"></div>
+                            </div>
+                            <% } %>
+                        </div>
                     </td>
                     <td class="text-end pe-4">
                         <span class="text-accent fw-bold"><%= user.totalMinutes %></span> <span class="small opacity-50">Min</span>
@@ -122,16 +183,27 @@
         </table>
     </div>
 
+    <div class="mt-5 p-4 glass-card">
+        <h5 class="text-accent mb-4"><i class="fas fa-map-signs me-2"></i> Rollen Roadmap</h5>
+        <div class="row g-2">
+            <% [...ranks].reverse().forEach(r => { %>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="p-2 border border-secondary rounded text-center" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.05) !important;">
+                        <div style="color: <%= r.color %>; font-size: 0.7rem; font-weight: bold; text-transform: uppercase;"><%= r.name %></div>
+                        <div class="small opacity-50" style="font-size: 0.6rem;"><%= r.min %> Min</div>
+                    </div>
+                </div>
+            <% }) %>
+        </div>
+    </div>
+
     <div class="text-center mt-5 opacity-25 small">
         <p>Daten werden bei Stream-Ende aktualisiert</p>
     </div>
 </div>
 
 <script>
-    // Automatische Aktualisierung alle 60 Sekunden, um Live-Status zu prüfen
-    setTimeout(function(){
-       window.location.reload();
-    }, 60000);
+    setTimeout(function(){ window.location.reload(); }, 60000);
 </script>
 
 </body>
