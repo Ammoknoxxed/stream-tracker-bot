@@ -86,9 +86,21 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     const userId = newPresence.userId;
     const guildId = newPresence.guild.id;
     
-    // Prüfen, ob der User gerade einen Stream (Go Live) macht
-    const isStreaming = newPresence.activities.some(act => [1, 2].includes(act.type) || act.name === 'Go Live' || act.streaming);
-    const wasStreaming = oldPresence?.activities.some(act => [1, 2].includes(act.type) || act.name === 'Go Live' || act.streaming);
+    // VERBESSERTE ERKENNUNG:
+    // Wir prüfen auf "streaming" Flag ODER Typ 1 (Streaming) ODER Aktivitäten wie "Go Live"
+    const isStreaming = newPresence.activities.some(act => 
+        act.type === 1 || 
+        act.type === 2 || 
+        (act.flags && act.flags.has(512)) || // 512 ist das interne Flag für "STREAMING"
+        act.name === 'Go Live'
+    );
+
+    const wasStreaming = oldPresence?.activities.some(act => 
+        act.type === 1 || 
+        act.type === 2 || 
+        (act.flags && act.flags.has(512)) || 
+        act.name === 'Go Live'
+    );
 
     // FALL A: User startet den Stream
     if (isStreaming && !wasStreaming) {
@@ -102,7 +114,7 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
             },
             { upsert: true }
         );
-        console.log(`${newPresence.user.username} hat angefangen zu streamen.`);
+        console.log(`📡 [START] ${newPresence.user.username} streamt jetzt.`);
     }
 
     // FALL B: User beendet den Stream
@@ -110,9 +122,9 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
         const userData = await StreamUser.findOne({ userId, guildId });
         if (userData && userData.lastStreamStart) {
             const now = new Date();
-            const minutesStreamed = Math.floor((now - userData.lastStreamStart) / 60000); // Millisekunden in Minuten umwandeln
+            const minutesStreamed = Math.round((now - userData.lastStreamStart) / 60000); 
 
-            if (minutesStreamed > 0) {
+            if (minutesStreamed >= 1) { // Nur speichern wenn mind. 1 Minute
                 const updatedUser = await StreamUser.findOneAndUpdate(
                     { userId, guildId },
                     { 
@@ -123,25 +135,26 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
                     { new: true }
                 );
 
-                console.log(`${userData.username} hat gestoppt. +${minutesStreamed} Min. Gesamt: ${updatedUser.totalMinutes}`);
+                console.log(`🛑 [STOP] ${userData.username} fertig. +${minutesStreamed} Min. Gesamt: ${updatedUser.totalMinutes}`);
                 
                 // --- ROLLEN-CHECK ---
                 const config = await GuildConfig.findOne({ guildId });
                 if (config && config.rewards.length > 0) {
-                    const member = await newPresence.guild.members.fetch(userId);
-                    
-                    // Prüfen, ob der User genug Minuten für eine neue Rolle hat
-                    for (const reward of config.rewards) {
-                        if (updatedUser.totalMinutes >= reward.minutesRequired) {
-                            if (!member.roles.cache.has(reward.roleId)) {
-                                await member.roles.add(reward.roleId).catch(e => console.log("Fehler beim Rollen geben:", e));
+                    try {
+                        const member = await newPresence.guild.members.fetch(userId);
+                        for (const reward of config.rewards) {
+                            if (updatedUser.totalMinutes >= reward.minutesRequired) {
+                                if (!member.roles.cache.has(reward.roleId)) {
+                                    await member.roles.add(reward.roleId);
+                                    console.log(`🏆 Rolle @${reward.roleName} an ${userData.username} vergeben.`);
+                                }
                             }
                         }
-                    }
+                    } catch (e) { console.log("Rollen-Fehler:", e.message); }
                 }
             } else {
-                // Stream war zu kurz (unter 1 Min)
                 await StreamUser.findOneAndUpdate({ userId, guildId }, { isStreaming: false, lastStreamStart: null });
+                console.log(`⏳ Stream von ${userData.username} war kürzer als 1 Minute (nicht gezählt).`);
             }
         }
     }
@@ -260,4 +273,5 @@ app.listen(PORT, () => {
 
 
 // --- ENDE DER DATEI ---
+
 
