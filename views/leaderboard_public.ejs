@@ -12,7 +12,6 @@
         .leaderboard-container { max-width: 900px; margin: 40px auto; }
         .top-three { display: flex; justify-content: center; align-items: flex-end; gap: 20px; margin-bottom: 50px; padding-top: 20px; }
         
-        /* Podium-Plätze */
         .podium-card { 
             background: var(--bg-card); backdrop-filter: blur(10px); 
             border: 1px solid rgba(255,255,255,0.1); border-radius: 20px;
@@ -25,10 +24,8 @@
 
         .podium-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px; transition: 0.3s; }
         .podium-1 .podium-avatar { width: 100px; height: 100px; border-color: #fbbf24; }
-        
         .crown-icon { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 2rem; }
 
-        /* Live-Effekte */
         .glow-streaming {
             border-color: #ff0055 !important;
             box-shadow: 0 0 15px rgba(255, 0, 85, 0.6);
@@ -50,32 +47,22 @@
 
         @keyframes blinker { 50% { opacity: 0.5; } }
 
-        /* Fortschritt & Roadmap Design */
         .progress-custom {
-            height: 6px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            overflow: hidden;
-            margin-top: 5px;
+            height: 6px; background: rgba(255,255,255,0.1);
+            border-radius: 10px; overflow: hidden; margin-top: 5px;
         }
         .rank-card {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            transition: all 0.3s ease;
-        }
-        .rank-card:hover {
-            background: rgba(255, 255, 255, 0.08);
-            transform: scale(1.05);
-            border-color: rgba(255, 255, 255, 0.2);
+            border-radius: 12px; transition: all 0.3s ease;
         }
         .border-accent { border-color: var(--accent) !important; }
+        .live-timer-text { color: #ff0055 !important; }
     </style>
 </head>
 <body>
 
 <% 
-// Ranking Definition
 const ranks = [
     { min: 18000, name: "GOD OF MAX WIN", color: "#ffffff", glow: "0 0 15px rgba(255,255,255,0.8)" },
     { min: 16800, name: "Casino Imperator", color: "#ff4500" },
@@ -103,15 +90,15 @@ const getRankInfo = (mins) => {
     const nextIndex = ranks.indexOf(current) - 1;
     const next = nextIndex >= 0 ? ranks[nextIndex] : null;
     let progress = 100;
-    if (next) {
-        progress = Math.floor(((mins - current.min) / (next.min - current.min)) * 100);
-    }
+    if (next) progress = Math.floor(((mins - current.min) / (next.min - current.min)) * 100);
     return { current, next, progress };
 };
 
-// Hilfsfunktion: Minuten zu Stunden (auf 1 Dezimalstelle gerundet)
-const toHours = (mins) => {
-    return (mins / 60).toFixed(mins % 60 === 0 ? 0 : 1); 
+// Hilfsfunktion für Server-Side Rendering
+const formatTime = (totalMins) => {
+    const hours = Math.floor(totalMins / 60);
+    const mins = Math.floor(totalMins % 60);
+    return hours > 0 ? `${hours} Std. ${mins} Min.` : `${mins} Min.`;
 };
 %>
 
@@ -130,24 +117,25 @@ const toHours = (mins) => {
     <div class="top-three">
         <% trackedUsers.slice(0, 3).forEach((user, index) => { 
             const info = getRankInfo(user.totalMinutes);
+            let displayMinutes = user.totalMinutes;
+            if (user.isStreaming && user.lastStreamStart) {
+                displayMinutes += Math.floor((new Date() - new Date(user.lastStreamStart)) / 60000);
+            }
         %>
             <div class="podium-card podium-<%= index + 1 %> glass-card">
                 <% if(index === 0) { %><i class="fas fa-crown crown-icon rank-gold"></i><% } %>
-                
                 <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                      class="podium-avatar <%= user.isStreaming ? 'glow-streaming' : '' %>">
-                
                 <h4 class="mb-1 text-truncate"><%= user.username %></h4>
-                
                 <div style="color: <%= info.current.color %>; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; text-shadow: <%= info.current.glow || 'none' %>">
                     <%= info.current.name %>
                 </div>
-
-                <% if(user.isStreaming) { %>
-                    <span class="badge badge-live mb-2">LIVE</span>
-                <% } %>
-
-                <div class="text-accent fw-bold"><%= toHours(user.totalMinutes) %> Std.</div>
+                <% if(user.isStreaming) { %><span class="badge badge-live mb-2">LIVE</span><% } %>
+                <div class="text-accent fw-bold live-timer" 
+                     data-base="<%= user.totalMinutes %>" 
+                     data-start="<%= user.isStreaming && user.lastStreamStart ? user.lastStreamStart.toISOString() : 'null' %>">
+                    <%= formatTime(displayMinutes) %>
+                </div>
                 <div class="small opacity-50">Platz <%= index + 1 %></div>
             </div>
         <% }) %>
@@ -166,6 +154,10 @@ const toHours = (mins) => {
             <tbody>
                 <% trackedUsers.slice(3).forEach((user, index) => { 
                     const info = getRankInfo(user.totalMinutes);
+                    let displayMinutes = user.totalMinutes;
+                    if (user.isStreaming && user.lastStreamStart) {
+                        displayMinutes += Math.floor((new Date() - new Date(user.lastStreamStart)) / 60000);
+                    }
                 %>
                 <tr class="border-bottom border-secondary border-opacity-10">
                     <td class="ps-4 opacity-50">#<%= index + 4 %></td>
@@ -173,18 +165,15 @@ const toHours = (mins) => {
                         <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                              style="width: 40px; height: 40px; border-radius: 50%;" 
                              class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
-                        
                         <div class="flex-grow-1" style="max-width: 250px;">
                             <div class="d-flex align-items-center">
                                 <span class="fw-bold me-2"><%= user.username %></span>
                                 <% if(user.isStreaming) { %><span class="badge badge-live" style="font-size: 0.5rem;">LIVE</span><% } %>
                             </div>
-                            
                             <div class="d-flex justify-content-between align-items-center mt-1" style="font-size: 0.65rem;">
                                 <span style="color: <%= info.current.color %>; font-weight: 800; text-transform: uppercase;"><%= info.current.name %></span>
-                                <% if(info.next) { %><span class="opacity-50 text-end">Next: <%= toHours(info.next.min) %>h</span><% } %>
+                                <% if(info.next) { %><span class="opacity-50">Next: <%= formatTime(info.next.min) %></span><% } %>
                             </div>
-                            
                             <% if(info.next) { %>
                             <div class="progress-custom">
                                 <div class="progress-bar" style="width: <%= info.progress %>%; background: <%= info.current.color %>;"></div>
@@ -193,45 +182,48 @@ const toHours = (mins) => {
                         </div>
                     </td>
                     <td class="text-end pe-4">
-                        <span class="text-accent fw-bold"><%= toHours(user.totalMinutes) %></span> <span class="small opacity-50">Std.</span>
+                        <span class="text-accent fw-bold live-timer" 
+                              data-base="<%= user.totalMinutes %>" 
+                              data-start="<%= user.isStreaming && user.lastStreamStart ? user.lastStreamStart.toISOString() : 'null' %>">
+                            <%= formatTime(displayMinutes) %>
+                        </span>
                     </td>
                 </tr>
                 <% }) %>
-
-                <% if(trackedUsers.length === 0) { %>
-                    <tr><td colspan="3" class="text-center py-5 opacity-50">Noch keine Daten verfügbar. Startet den ersten Stream!</td></tr>
-                <% } %>
             </tbody>
         </table>
-    </div>
-
-    <div class="mt-5 p-4 glass-card border-0 shadow-lg">
-        <h5 class="text-accent mb-4 fw-bold text-center text-uppercase" style="letter-spacing: 2px;">
-            <i class="fas fa-map-signs me-2"></i> Rollen Roadmap
-        </h5>
-        <div class="row g-3">
-            <% [...ranks].reverse().forEach(r => { %>
-                <div class="col-6 col-md-4 col-lg-3">
-                    <div class="rank-card p-3 h-100 d-flex flex-column align-items-center justify-content-center text-center">
-                        <div style="color: <%= r.color %>; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">
-                            <%= r.name %>
-                        </div>
-                        <div class="mt-1" style="font-size: 0.7rem; color: rgba(255,255,255,0.6);">
-                            <span class="text-white fw-bold"><%= toHours(r.min) %></span> Std.
-                        </div>
-                    </div>
-                </div>
-            <% }) %>
-        </div>
-    </div>
-
-    <div class="text-center mt-5 opacity-25 small">
-        <p>Daten werden bei Stream-Ende aktualisiert</p>
     </div>
 </div>
 
 <script>
-    setTimeout(function(){ window.location.reload(); }, 60000);
+    function formatTimeJS(totalMins) {
+        const hours = Math.floor(totalMins / 60);
+        const mins = Math.floor(totalMins % 60);
+        return hours > 0 ? hours + " Std. " + mins + " Min." : mins + " Min.";
+    }
+
+    function updateTimers() {
+        const now = new Date();
+        document.querySelectorAll('.live-timer').forEach(el => {
+            const startStr = el.getAttribute('data-start');
+            const baseMins = parseInt(el.getAttribute('data-base'));
+            
+            if (startStr && startStr !== 'null') {
+                const startTime = new Date(startStr);
+                const diffMs = now - startTime;
+                if (diffMs > 0) {
+                    const sessionMinutes = Math.floor(diffMs / 60000);
+                    el.innerText = formatTimeJS(baseMins + sessionMinutes);
+                    el.classList.add('live-timer-text');
+                }
+            }
+        });
+    }
+
+    // Update alle 10 Sekunden
+    setInterval(updateTimers, 10000);
+    // Sofortiger Start beim Laden
+    updateTimers();
 </script>
 
 </body>
