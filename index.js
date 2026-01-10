@@ -19,6 +19,7 @@ const streamUserSchema = new mongoose.Schema({
     userId: String,
     guildId: String,
     username: String,
+    avatar: String,
     totalMinutes: { type: Number, default: 0 },
     lastStreamStart: Date,
     isStreaming: { type: Boolean, default: false }
@@ -162,18 +163,18 @@ app.get('/logout', (req, res) => {
 // --- 4. TRACKING LOGIK ---
 
 // Diese Funktion steht ca. in der Mitte deiner index.js
-async function handleStreamStart(userId, guildId, username, avatar) {
+async function handleStreamStart(userId, guildId, username, avatarURL) {
     await StreamUser.findOneAndUpdate(
         { userId, guildId },
         { 
-            isStreaming: true, 
+            isStreaming: 1, 
             lastStreamStart: new Date(), 
-            username, 
-            avatar: avatar // Speichert den Link zum Profilbild
+            username: username,
+            avatar: avatarURL // Hier wird das Bild gespeichert
         },
         { upsert: true }
     );
-    console.log(`📡 [START] ${username} wird getrackt.`);
+    console.log(`📡 [START] ${username} streamt jetzt.`);
 }
 
 async function handleStreamStop(userId, guildId) {
@@ -208,13 +209,38 @@ async function handleStreamStop(userId, guildId) {
 // Event: Go Live / Voice Streaming
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
-    const channel = newState.channel; // Der Channel, in dem der User ist
+    const channel = newState.channel;
     
-    // Wenn kein Channel vorhanden ist (User verlässt Voice), beenden wir das Tracking
+    // 1. Wenn der User den Voice-Channel komplett verlässt
     if (!channel) {
         if (oldState.streaming) handleStreamStop(oldState.id, guildId);
         return;
     }
+
+    const config = await GuildConfig.findOne({ guildId });
+    
+    // Prüfen, ob der Channel erlaubt ist
+    const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
+                       config.allowedChannels.includes(channel.id) || 
+                       config.allowedChannels.includes(channel.parentId);
+
+    // 2. Stream startet
+    if (!oldState.streaming && newState.streaming) {
+        if (isAllowed) {
+            // HIER DIE ÄNDERUNG: Wir holen die Avatar-URL
+            const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
+            
+            // Wir geben den avatarURL als vierten Parameter mit
+            handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
+        } else {
+            console.log(`⏳ Stream in ${channel.name} wird ignoriert (nicht erlaubt).`);
+        }
+    } 
+    // 3. Stream stoppt
+    else if (oldState.streaming && !newState.streaming) {
+        handleStreamStop(oldState.id, guildId);
+    }
+});
 
     const config = await GuildConfig.findOne({ guildId });
     
@@ -282,6 +308,7 @@ client.once('ready', async () => {
     console.log('🚀 Slash-Commands registriert!');
 });
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
 
