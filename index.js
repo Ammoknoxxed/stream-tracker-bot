@@ -10,7 +10,8 @@ require('dotenv').config();
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
     guildId: String,
-    rewards: [{ minutesRequired: Number, roleId: String, roleName: String }]
+    rewards: [{ minutesRequired: Number, roleId: String, roleName: String }],
+    allowedChannels: [String] // Speichert die IDs der erlaubten Channels oder Kategorien
 });
 const GuildConfig = mongoose.model('GuildConfig', guildConfigSchema);
 
@@ -82,12 +83,17 @@ app.get('/dashboard/:guildId', async (req, res) => {
     if (!guild) return res.send("Bot ist nicht auf diesem Server!");
 
     let config = await GuildConfig.findOne({ guildId });
-    if (!config) config = await GuildConfig.create({ guildId, rewards: [] });
+    if (!config) config = await GuildConfig.create({ guildId, rewards: [], allowedChannels: [] });
 
     const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
+    
+    // Holen aller Voice-Channels und Kategorien
+    const channels = guild.channels.cache
+        .filter(c => c.type === 2 || c.type === 4) // 2 = Voice, 4 = Category
+        .map(c => ({ id: c.id, name: c.name, type: c.type }));
 
-    res.render('settings', { guild, config, trackedUsers, roles });
+    res.render('settings', { guild, config, trackedUsers, roles, channels });
 });
 
 app.post('/dashboard/:guildId/save', async (req, res) => {
@@ -98,6 +104,20 @@ app.post('/dashboard/:guildId/save', async (req, res) => {
     await GuildConfig.findOneAndUpdate(
         { guildId: req.params.guildId },
         { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } }
+    );
+    res.redirect(`/dashboard/${req.params.guildId}`);
+});
+
+app.post('/dashboard/:guildId/save-channels', async (req, res) => {
+    let { channels } = req.body;
+    // Falls nur ein Channel gewählt wurde, machen wir ein Array daraus
+    if (!channels) channels = [];
+    if (!Array.isArray(channels)) channels = [channels];
+
+    await GuildConfig.findOneAndUpdate(
+        { guildId: req.params.guildId },
+        { allowedChannels: channels },
+        { upsert: true }
     );
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
@@ -155,11 +175,31 @@ async function handleStreamStop(userId, guildId) {
 }
 
 // Event: Go Live / Voice Streaming
-client.on('voiceStateUpdate', (oldState, newState) => {
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    const guildId = newState.guild.id;
+    const channel = newState.channel; // Der Channel, in dem der User ist
+    
+    // Wenn kein Channel vorhanden ist (User verlässt Voice), beenden wir das Tracking
+    if (!channel) {
+        if (oldState.streaming) handleStreamStop(oldState.id, guildId);
+        return;
+    }
+
+    const config = await GuildConfig.findOne({ guildId });
+    
+    // Prüfen, ob Channel-Beschränkungen existieren
+    const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
+                       config.allowedChannels.includes(channel.id) || 
+                       config.allowedChannels.includes(channel.parentId); // Prüft auch die Kategorie ID
+
     if (!oldState.streaming && newState.streaming) {
-        handleStreamStart(newState.id, newState.guild.id, newState.member.user.username);
+        if (isAllowed) {
+            handleStreamStart(newState.id, guildId, newState.member.user.username);
+        } else {
+            console.log(`⏳ Stream in ${channel.name} wird ignoriert (nicht auf der Erlaubt-Liste).`);
+        }
     } else if (oldState.streaming && !newState.streaming) {
-        handleStreamStop(oldState.id, oldState.guild.id);
+        handleStreamStop(oldState.id, guildId);
     }
 });
 
@@ -184,4 +224,5 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', () => console.log(`✅ Bot online: ${client.user.tag}`));
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
