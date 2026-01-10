@@ -57,6 +57,29 @@
         </table>
     </div>
 
+<div class="card mt-4">
+    <div class="card-header">Erlaubte Channels / Kategorien</div>
+    <div class="card-body">
+        <p class="text-muted small">Wähle aus, in welchen Channels oder Kategorien das Tracking aktiv sein soll. Ist nichts ausgewählt, wird überall getrackt.</p>
+        <form action="/dashboard/<%= guild.id %>/save-channels" method="POST">
+            <div class="row">
+                <% channels.forEach(channel => { %>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="channels" value="<%= channel.id %>" id="ch-<%= channel.id %>" 
+                            <%= config.allowedChannels && config.allowedChannels.includes(channel.id) ? 'checked' : '' %>>
+                            <label class="form-check-label" for="ch-<%= channel.id %>">
+                                <%= channel.type === 4 ? '📁 ' : '🔊 ' %> <%= channel.name %>
+                            </label>
+                        </div>
+                    </div>
+                <% }) %>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Kanäle speichern</button>
+        </form>
+    </div>
+</div>
+
     <div class="section">
         <h2>Getrackte User (Statistik)</h2>
         <table>
@@ -85,4 +108,5 @@
         </table>
     </div>
 </body>
+
 </html>
