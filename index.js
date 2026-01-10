@@ -62,7 +62,7 @@ app.use(session({
 }));
 
 app.use(passport.initialize());
-app.use(session.session());
+app.use(passport.session());
 
 // --- ROUTES ---
 app.get('/', (req, res) => res.render('index'));
@@ -184,3 +184,4 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', () => console.log(`✅ Bot online: ${client.user.tag}`));
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
