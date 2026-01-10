@@ -77,11 +77,16 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
+// ÖFFENTLICHES LEADERBOARD (Optimiert für Live-Anzeige)
 app.get('/leaderboard/:guildId', async (req, res) => {
     const guildId = req.params.guildId;
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return res.send("Leaderboard nicht gefunden.");
+
+    // Wir holen die User und sortieren sie
     const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
+    
+    // Wir übergeben das echte Guild-Objekt (für das Icon) und die User
     res.render('leaderboard_public', { guild, trackedUsers });
 });
 
@@ -149,17 +154,22 @@ app.get('/logout', (req, res) => {
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
-        await StreamUser.findOneAndUpdate(
-            { userId, guildId },
-            { 
-                isStreaming: true, 
-                lastStreamStart: new Date(), 
-                username: username,
-                avatar: avatarURL 
-            },
-            { upsert: true }
-        );
-        console.log(`📡 [START] ${username} streamt jetzt.`);
+        // Wir setzen lastStreamStart NUR, wenn der User nicht schon als streamend markiert ist
+        // Damit der Timer bei kleinen Schwankungen nicht resettet wird.
+        const user = await StreamUser.findOne({ userId, guildId });
+        if (!user || !user.isStreaming) {
+            await StreamUser.findOneAndUpdate(
+                { userId, guildId },
+                { 
+                    isStreaming: true, 
+                    lastStreamStart: new Date(), 
+                    username: username,
+                    avatar: avatarURL 
+                },
+                { upsert: true }
+            );
+            console.log(`📡 [START] ${username} streamt jetzt.`);
+        }
     } catch (err) {
         console.error("Fehler in handleStreamStart:", err);
     }
@@ -168,12 +178,11 @@ async function handleStreamStart(userId, guildId, username, avatarURL) {
 async function handleStreamStop(userId, guildId) {
     try {
         const userData = await StreamUser.findOne({ userId, guildId });
-        if (!userData || !userData.lastStreamStart) return;
+        if (!userData || !userData.lastStreamStart || !userData.isStreaming) return;
 
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
-        userData.isStreaming = false;
-        userData.lastStreamStart = null;
-
+        
+        // Erst berechnen, dann Status zurücksetzen
         if (minutes >= 1) {
             userData.totalMinutes += minutes;
             console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min.`);
@@ -191,6 +200,9 @@ async function handleStreamStop(userId, guildId) {
                 }
             }
         }
+        
+        userData.isStreaming = false;
+        userData.lastStreamStart = null;
         await userData.save();
     } catch (err) {
         console.error("Fehler in handleStreamStop:", err);
@@ -203,13 +215,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const guildId = newState.guild.id;
         const channel = newState.channel;
 
-        // 1. Wenn der User den Kanal verlässt oder den Stream stoppt -> STOPP
+        // Wenn der User den Kanal verlässt oder den Stream stoppt -> STOPP
         if (!channel || !newState.streaming) {
             await handleStreamStop(newState.id, guildId);
             return;
         }
 
-        // 2. Prüfung der erlaubten Kanäle (deine bestehende Logik)
+        // Prüfung der erlaubten Kanäle
         const config = await GuildConfig.findOne({ guildId });
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                            config.allowedChannels.includes(channel.id) || 
@@ -220,16 +232,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             return;
         }
 
-        // 3. ZUSCHAUER-PRÜFUNG:
-        // Wir zählen alle Mitglieder im Channel, die keine Bots sind und nicht der Streamer selbst.
+        // ZUSCHAUER-PRÜFUNG:
         const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
 
         if (newState.streaming && viewerCount > 0) {
-            // Tracking startet oder läuft weiter
             const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
             await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
         } else {
-            // Stream läuft zwar, aber niemand schaut zu -> STOPP/PAUSE
             await handleStreamStop(newState.id, guildId);
         }
 
@@ -268,21 +277,13 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
-
-    const data = { 
-        name: 'leaderboard', 
-        description: 'Zeigt den Link zum Ranking an' 
-    };
-
+    const data = { name: 'leaderboard', description: 'Zeigt den Link zum Ranking an' };
     try {
-        // Wir registrieren den Befehl explizit global
         await client.application.commands.set([data]);
-        console.log('🚀 Slash-Command /leaderboard wurde erfolgreich bei Discord registriert!');
+        console.log('🚀 Slash-Command registriert!');
     } catch (error) {
-        console.error('❌ Fehler beim Registrieren des Befehls:', error);
+        console.error('❌ Fehler:', error);
     }
 });
 
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
-
-
