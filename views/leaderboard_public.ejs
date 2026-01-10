@@ -63,9 +63,9 @@
 <body>
 
 <% 
-// Ranking Definition
+// Ranking Definition mit Stunden-Anzeige
 const ranks = [
-    { min: 18000, name: "GOD OF MAX WIN", color: "#ffffff" },
+    { min: 18000, name: "GOD OF MAX WIN", color: "#ffffff", glow: "0 0 15px rgba(255,255,255,0.8)" },
     { min: 16800, name: "Casino Imperator", color: "#ff4500" },
     { min: 15600, name: "Jackpot Legende", color: "#f1c40f" },
     { min: 14100, name: "Haus Elite", color: "#d35400" },
@@ -95,6 +95,11 @@ const getRankInfo = (mins) => {
         progress = Math.floor(((mins - current.min) / (next.min - current.min)) * 100);
     }
     return { current, next, progress };
+};
+
+// Hilfsfunktion für die Stundenumrechnung
+const toHours = (mins) => {
+    return (mins / 60).toFixed(mins % 60 === 0 ? 0 : 1); 
 };
 %>
 
