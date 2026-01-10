@@ -240,14 +240,42 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
     }
 });
 
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'leaderboard') {
+        // Wir bauen den Link dynamisch zusammen
+        // Ersetze 'stream-tracker-bot-production.up.railway.app' durch deine echte Railway-URL, falls sie anders ist
+        const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${interaction.guildId}`;
+        
+        await interaction.reply({
+            content: `🏆 **Hier ist das aktuelle Stream-Ranking für ${interaction.guild.name}:**\n${lbLink}`,
+            ephemeral: false // Jeder im Channel kann die Antwort sehen
+        });
+    }
+});
+
 // --- 5. START ---
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ MongoDB verbunden'))
     .catch(err => console.error('❌ MongoDB Fehler:', err));
 
 client.login(process.env.TOKEN);
-client.once('ready', () => console.log(`✅ Bot online: ${client.user.tag}`));
+client.once('ready', async () => {
+    console.log(`✅ Bot online: ${client.user.tag}`);
+
+    // Befehl registrieren
+    const data = {
+        name: 'leaderboard',
+        description: 'Zeigt den Link zum aktuellen Stream-Ranking an'
+    };
+
+    // Wir registrieren den Befehl für alle Server, auf denen der Bot ist
+    await client.application.commands.set([data]);
+    console.log('🚀 Slash-Commands registriert!');
+});
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
 
