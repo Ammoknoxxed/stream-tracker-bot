@@ -208,37 +208,41 @@ async function handleStreamStop(userId, guildId) {
 
 // Event: Go Live / Voice Streaming
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    const guildId = newState.guild.id;
-    const channel = newState.channel;
-    
-    // 1. Wenn der User den Voice-Channel komplett verlässt
-    if (!channel) {
-        if (oldState.streaming) handleStreamStop(oldState.id, guildId);
-        return;
-    }
-
-    const config = await GuildConfig.findOne({ guildId });
-    
-    // Prüfen, ob der Channel erlaubt ist
-    const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
-                       config.allowedChannels.includes(channel.id) || 
-                       config.allowedChannels.includes(channel.parentId);
-
-    // 2. Stream startet
-    if (!oldState.streaming && newState.streaming) {
-        if (isAllowed) {
-            // HIER DIE ÄNDERUNG: Wir holen die Avatar-URL
-            const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
-            
-            // Wir geben den avatarURL als vierten Parameter mit
-            handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
-        } else {
-            console.log(`⏳ Stream in ${channel.name} wird ignoriert (nicht erlaubt).`);
+    try {
+        const guildId = newState.guild.id;
+        const channel = newState.channel;
+        
+        // 1. Wenn der User den Voice-Channel komplett verlässt
+        if (!channel) {
+            // HIER: await hinzugefügt
+            if (oldState.streaming) await handleStreamStop(oldState.id, guildId);
+            return;
         }
-    } 
-    // 3. Stream stoppt
-    else if (oldState.streaming && !newState.streaming) {
-        handleStreamStop(oldState.id, guildId);
+
+        const config = await GuildConfig.findOne({ guildId });
+        
+        // Prüfen, ob der Channel erlaubt ist
+        const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
+                           config.allowedChannels.includes(channel.id) || 
+                           (channel.parentId && config.allowedChannels.includes(channel.parentId));
+
+        // 2. Stream startet
+        if (!oldState.streaming && newState.streaming) {
+            if (isAllowed) {
+                const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
+                // HIER: await hinzugefügt
+                await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
+            } else {
+                console.log(`⏳ Stream in ${channel.name} wird ignoriert (nicht erlaubt).`);
+            }
+        } 
+        // 3. Stream stoppt
+        else if (oldState.streaming && !newState.streaming) {
+            // HIER: await hinzugefügt
+            await handleStreamStop(oldState.id, guildId);
+        }
+    } catch (error) {
+        console.error("Fehler im voiceStateUpdate:", error);
     }
 });
 
@@ -308,6 +312,7 @@ client.once('ready', async () => {
     console.log('🚀 Slash-Commands registriert!');
 });
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
 
