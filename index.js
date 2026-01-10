@@ -87,8 +87,8 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     const guildId = newPresence.guild.id;
     
     // Prüfen, ob der User gerade einen Stream (Go Live) macht
-    const isStreaming = newPresence.activities.some(act => act.type === 2 || (act.flags && act.flags.has('STREAMING')) || act.name === 'Go Live');
-    const wasStreaming = oldPresence?.activities.some(act => act.type === 2 || (act.flags && act.flags.has('STREAMING')) || act.name === 'Go Live');
+    const isStreaming = newPresence.activities.some(act => [1, 2].includes(act.type) || act.name === 'Go Live' || act.streaming);
+    const wasStreaming = oldPresence?.activities.some(act => [1, 2].includes(act.type) || act.name === 'Go Live' || act.streaming);
 
     // FALL A: User startet den Stream
     if (isStreaming && !wasStreaming) {
@@ -260,3 +260,4 @@ app.listen(PORT, () => {
 
 
 // --- ENDE DER DATEI ---
+
