@@ -203,24 +203,36 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const guildId = newState.guild.id;
         const channel = newState.channel;
 
-        if (!channel) {
-            if (oldState.streaming) await handleStreamStop(oldState.id, guildId);
+        // 1. Wenn der User den Kanal verlässt oder den Stream stoppt -> STOPP
+        if (!channel || !newState.streaming) {
+            await handleStreamStop(newState.id, guildId);
             return;
         }
 
+        // 2. Prüfung der erlaubten Kanäle (deine bestehende Logik)
         const config = await GuildConfig.findOne({ guildId });
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                            config.allowedChannels.includes(channel.id) || 
                            (channel.parentId && config.allowedChannels.includes(channel.parentId));
 
-        if (!oldState.streaming && newState.streaming) {
-            if (isAllowed) {
-                const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
-                await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
-            }
-        } else if (oldState.streaming && !newState.streaming) {
-            await handleStreamStop(oldState.id, guildId);
+        if (!isAllowed) {
+            await handleStreamStop(newState.id, guildId);
+            return;
         }
+
+        // 3. ZUSCHAUER-PRÜFUNG:
+        // Wir zählen alle Mitglieder im Channel, die keine Bots sind und nicht der Streamer selbst.
+        const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
+
+        if (newState.streaming && viewerCount > 0) {
+            // Tracking startet oder läuft weiter
+            const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
+            await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
+        } else {
+            // Stream läuft zwar, aber niemand schaut zu -> STOPP/PAUSE
+            await handleStreamStop(newState.id, guildId);
+        }
+
     } catch (error) {
         console.error("Fehler im voiceStateUpdate:", error);
     }
@@ -272,4 +284,5 @@ client.once('ready', async () => {
 });
 
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
