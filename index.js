@@ -76,6 +76,19 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
+// Öffentliches Leaderboard für alle (ohne Login)
+app.get('/leaderboard/:guildId', async (req, res) => {
+    const guildId = req.params.guildId;
+    const guild = client.guilds.cache.get(guildId);
+    
+    // Falls der Bot den Server nicht kennt
+    if (!guild) return res.send("Leaderboard nicht gefunden.");
+
+    const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
+    
+    res.render('leaderboard_public', { guild, trackedUsers });
+});
+
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const guildId = req.params.guildId;
@@ -235,6 +248,7 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', () => console.log(`✅ Bot online: ${client.user.tag}`));
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
 
