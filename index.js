@@ -11,7 +11,7 @@ require('dotenv').config();
 const guildConfigSchema = new mongoose.Schema({
     guildId: String,
     rewards: [{ minutesRequired: Number, roleId: String, roleName: String }],
-    allowedChannels: [String] // Speichert die IDs der erlaubten Channels oder Kategorien
+    allowedChannels: [String]
 });
 const GuildConfig = mongoose.model('GuildConfig', guildConfigSchema);
 
@@ -32,7 +32,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates, // WICHTIG für Go Live
+        GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent
     ],
     partials: [Partials.GuildMember, Partials.User, Partials.Presence]
@@ -43,7 +43,6 @@ const app = express();
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
 
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((obj, done) => done(null, obj));
@@ -78,16 +77,11 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-// Öffentliches Leaderboard für alle (ohne Login)
 app.get('/leaderboard/:guildId', async (req, res) => {
     const guildId = req.params.guildId;
     const guild = client.guilds.cache.get(guildId);
-    
-    // Falls der Bot den Server nicht kennt
     if (!guild) return res.send("Leaderboard nicht gefunden.");
-
     const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
-    
     res.render('leaderboard_public', { guild, trackedUsers });
 });
 
@@ -102,10 +96,8 @@ app.get('/dashboard/:guildId', async (req, res) => {
 
     const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
-    
-    // Holen aller Voice-Channels und Kategorien
     const channels = guild.channels.cache
-        .filter(c => c.type === 2 || c.type === 4) // 2 = Voice, 4 = Category
+        .filter(c => c.type === 2 || c.type === 4)
         .map(c => ({ id: c.id, name: c.name, type: c.type }));
 
     res.render('settings', { guild, config, trackedUsers, roles, channels });
@@ -115,7 +107,6 @@ app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
     const role = guild.roles.cache.get(roleId);
-    
     await GuildConfig.findOneAndUpdate(
         { guildId: req.params.guildId },
         { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } }
@@ -125,10 +116,8 @@ app.post('/dashboard/:guildId/save', async (req, res) => {
 
 app.post('/dashboard/:guildId/save-channels', async (req, res) => {
     let { channels } = req.body;
-    // Falls nur ein Channel gewählt wurde, machen wir ein Array daraus
     if (!channels) channels = [];
     if (!Array.isArray(channels)) channels = [channels];
-
     await GuildConfig.findOneAndUpdate(
         { guildId: req.params.guildId },
         { allowedChannels: channels },
@@ -148,12 +137,8 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
 app.post('/dashboard/:guildId/delete-user', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const { userId } = req.body;
-    const guildId = req.params.guildId;
-    
-    // Löscht den Eintrag des Users für diesen spezifischen Server
-    await StreamUser.findOneAndDelete({ userId, guildId });
-    
-    res.redirect(`/dashboard/${guildId}`);
+    await StreamUser.findOneAndDelete({ userId, guildId: req.params.guildId });
+    res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
 app.get('/logout', (req, res) => {
@@ -167,7 +152,7 @@ async function handleStreamStart(userId, guildId, username, avatarURL) {
         await StreamUser.findOneAndUpdate(
             { userId, guildId },
             { 
-                isStreaming: 1, 
+                isStreaming: true, 
                 lastStreamStart: new Date(), 
                 username: username,
                 avatar: avatarURL 
@@ -186,22 +171,21 @@ async function handleStreamStop(userId, guildId) {
         if (!userData || !userData.lastStreamStart) return;
 
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
-        userData.isStreaming = 0; // Wir nutzen 0 für False (Consistency)
+        userData.isStreaming = false;
         userData.lastStreamStart = null;
 
         if (minutes >= 1) {
             userData.totalMinutes += minutes;
-            console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min. Gesamt: ${userData.totalMinutes}`);
+            console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min.`);
             
             const config = await GuildConfig.findOne({ guildId });
-            if (config && config.rewards) {
+            if (config) {
                 const guild = client.guilds.cache.get(guildId);
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (member) {
                     for (const reward of config.rewards) {
                         if (userData.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                            await member.roles.add(reward.roleId).catch(e => console.error("Rollen-Zuweisung fehlgeschlagen:", e.message));
-                            console.log(`🏆 Rolle ${reward.roleName} an ${userData.username} vergeben.`);
+                            await member.roles.add(reward.roleId).catch(() => {});
                         }
                     }
                 }
@@ -213,88 +197,54 @@ async function handleStreamStop(userId, guildId) {
     }
 }
 
-// Event: Voice State Update
+// Event: Go Live / Voice Streaming
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const guildId = newState.guild.id;
-        const userId = newState.id;
+        const channel = newState.channel;
 
-        // 1. Wenn der User den Voice-Channel komplett verlässt
-        if (!newState.channelId) {
-            if (oldState.streaming) {
-                await handleStreamStop(userId, guildId);
-            }
+        if (!channel) {
+            if (oldState.streaming) await handleStreamStop(oldState.id, guildId);
             return;
         }
 
         const config = await GuildConfig.findOne({ guildId });
-        
-        // Prüfen, ob der Channel erlaubt ist
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
-                           config.allowedChannels.includes(newState.channelId) || 
-                           (newState.channel && newState.channel.parentId && config.allowedChannels.includes(newState.channel.parentId));
+                           config.allowedChannels.includes(channel.id) || 
+                           (channel.parentId && config.allowedChannels.includes(channel.parentId));
 
-        // 2. Stream startet
         if (!oldState.streaming && newState.streaming) {
             if (isAllowed) {
                 const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
-                await handleStreamStart(userId, guildId, newState.member.user.username, avatarURL);
-            } else {
-                console.log(`⏳ Stream von ${newState.member.user.username} in ignoriertem Channel.`);
+                await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
             }
-        } 
-        // 3. Stream stoppt
-        else if (oldState.streaming && !newState.streaming) {
-            await handleStreamStop(userId, guildId);
+        } else if (oldState.streaming && !newState.streaming) {
+            await handleStreamStop(oldState.id, guildId);
         }
     } catch (error) {
-        console.error("Kritischer Fehler im voiceStateUpdate:", error);
-    }
-});
-
-    const config = await GuildConfig.findOne({ guildId });
-    
-    // Prüfen, ob Channel-Beschränkungen existieren
-    const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
-                       config.allowedChannels.includes(channel.id) || 
-                       config.allowedChannels.includes(channel.parentId); // Prüft auch die Kategorie ID
-
-    if (!oldState.streaming && newState.streaming) {
-        if (isAllowed) {
-            handleStreamStart(newState.id, guildId, newState.member.user.username);
-        } else {
-            console.log(`⏳ Stream in ${channel.name} wird ignoriert (nicht auf der Erlaubt-Liste).`);
-        }
-    } else if (oldState.streaming && !newState.streaming) {
-        handleStreamStop(oldState.id, guildId);
+        console.error("Fehler im voiceStateUpdate:", error);
     }
 });
 
 // Event: Twitch/YouTube Status
-client.on('presenceUpdate', (oldPresence, newPresence) => {
+client.on('presenceUpdate', async (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.guild) return;
     const isStreaming = newPresence.activities.some(a => a.type === 1);
     const wasStreaming = oldPresence?.activities.some(a => a.type === 1);
 
     if (isStreaming && !wasStreaming) {
-        handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username);
+        const avatarURL = newPresence.user.displayAvatarURL({ extension: 'png', size: 128 });
+        await handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username, avatarURL);
     } else if (!isStreaming && wasStreaming) {
-        handleStreamStop(newPresence.userId, newPresence.guild.id);
+        await handleStreamStop(newPresence.userId, newPresence.guild.id);
     }
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-
     if (interaction.commandName === 'leaderboard') {
-        // Wir bauen den Link dynamisch zusammen
-        // Ersetze 'stream-tracker-bot-production.up.railway.app' durch deine echte Railway-URL, falls sie anders ist
         const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${interaction.guildId}`;
-        
-        await interaction.reply({
-            content: `🏆 **Hier ist das aktuelle Stream-Ranking für ${interaction.guild.name}:**\n${lbLink}`,
-            ephemeral: false // Jeder im Channel kann die Antwort sehen
-        });
+        await interaction.reply({ content: `🏆 **Hier ist das aktuelle Stream-Ranking:**\n${lbLink}`, ephemeral: false });
     }
 });
 
@@ -306,25 +256,8 @@ mongoose.connect(process.env.MONGO_URI)
 client.login(process.env.TOKEN);
 client.once('ready', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
-
-    // Befehl registrieren
-    const data = {
-        name: 'leaderboard',
-        description: 'Zeigt den Link zum aktuellen Stream-Ranking an'
-    };
-
-    // Wir registrieren den Befehl für alle Server, auf denen der Bot ist
+    const data = { name: 'leaderboard', description: 'Zeigt den Link zum Ranking an' };
     await client.application.commands.set([data]);
-    console.log('🚀 Slash-Commands registriert!');
 });
+
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
-
-
-
-
-
-
-
-
-
-
