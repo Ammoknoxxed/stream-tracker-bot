@@ -162,60 +162,68 @@ app.get('/logout', (req, res) => {
 
 // --- 4. TRACKING LOGIK ---
 
-// Diese Funktion steht ca. in der Mitte deiner index.js
 async function handleStreamStart(userId, guildId, username, avatarURL) {
-    await StreamUser.findOneAndUpdate(
-        { userId, guildId },
-        { 
-            isStreaming: 1, 
-            lastStreamStart: new Date(), 
-            username: username,
-            avatar: avatarURL // Hier wird das Bild gespeichert
-        },
-        { upsert: true }
-    );
-    console.log(`📡 [START] ${username} streamt jetzt.`);
+    try {
+        await StreamUser.findOneAndUpdate(
+            { userId, guildId },
+            { 
+                isStreaming: 1, 
+                lastStreamStart: new Date(), 
+                username: username,
+                avatar: avatarURL 
+            },
+            { upsert: true }
+        );
+        console.log(`📡 [START] ${username} streamt jetzt.`);
+    } catch (err) {
+        console.error("Fehler in handleStreamStart:", err);
+    }
 }
 
 async function handleStreamStop(userId, guildId) {
-    const userData = await StreamUser.findOne({ userId, guildId });
-    if (!userData || !userData.lastStreamStart) return;
+    try {
+        const userData = await StreamUser.findOne({ userId, guildId });
+        if (!userData || !userData.lastStreamStart) return;
 
-    const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
-    userData.isStreaming = false;
-    userData.lastStreamStart = null;
+        const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
+        userData.isStreaming = 0; // Wir nutzen 0 für False (Consistency)
+        userData.lastStreamStart = null;
 
-    if (minutes >= 1) {
-        userData.totalMinutes += minutes;
-        console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min. Gesamt: ${userData.totalMinutes}`);
-        
-        const config = await GuildConfig.findOne({ guildId });
-        if (config) {
-            try {
+        if (minutes >= 1) {
+            userData.totalMinutes += minutes;
+            console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min. Gesamt: ${userData.totalMinutes}`);
+            
+            const config = await GuildConfig.findOne({ guildId });
+            if (config && config.rewards) {
                 const guild = client.guilds.cache.get(guildId);
-                const member = await guild.members.fetch(userId);
-                for (const reward of config.rewards) {
-                    if (userData.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                        await member.roles.add(reward.roleId);
-                        console.log(`🏆 Rolle ${reward.roleName} an ${userData.username} vergeben.`);
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (member) {
+                    for (const reward of config.rewards) {
+                        if (userData.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
+                            await member.roles.add(reward.roleId).catch(e => console.error("Rollen-Zuweisung fehlgeschlagen:", e.message));
+                            console.log(`🏆 Rolle ${reward.roleName} an ${userData.username} vergeben.`);
+                        }
                     }
                 }
-            } catch (err) { console.error("Rollen-Fehler:", err.message); }
+            }
         }
+        await userData.save();
+    } catch (err) {
+        console.error("Fehler in handleStreamStop:", err);
     }
-    await userData.save();
 }
 
-// Event: Go Live / Voice Streaming
+// Event: Voice State Update
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const guildId = newState.guild.id;
-        const channel = newState.channel;
-        
+        const userId = newState.id;
+
         // 1. Wenn der User den Voice-Channel komplett verlässt
-        if (!channel) {
-            // HIER: await hinzugefügt
-            if (oldState.streaming) await handleStreamStop(oldState.id, guildId);
+        if (!newState.channelId) {
+            if (oldState.streaming) {
+                await handleStreamStop(userId, guildId);
+            }
             return;
         }
 
@@ -223,26 +231,24 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         
         // Prüfen, ob der Channel erlaubt ist
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
-                           config.allowedChannels.includes(channel.id) || 
-                           (channel.parentId && config.allowedChannels.includes(channel.parentId));
+                           config.allowedChannels.includes(newState.channelId) || 
+                           (newState.channel && newState.channel.parentId && config.allowedChannels.includes(newState.channel.parentId));
 
         // 2. Stream startet
         if (!oldState.streaming && newState.streaming) {
             if (isAllowed) {
                 const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
-                // HIER: await hinzugefügt
-                await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
+                await handleStreamStart(userId, guildId, newState.member.user.username, avatarURL);
             } else {
-                console.log(`⏳ Stream in ${channel.name} wird ignoriert (nicht erlaubt).`);
+                console.log(`⏳ Stream von ${newState.member.user.username} in ignoriertem Channel.`);
             }
         } 
         // 3. Stream stoppt
         else if (oldState.streaming && !newState.streaming) {
-            // HIER: await hinzugefügt
-            await handleStreamStop(oldState.id, guildId);
+            await handleStreamStop(userId, guildId);
         }
     } catch (error) {
-        console.error("Fehler im voiceStateUpdate:", error);
+        console.error("Kritischer Fehler im voiceStateUpdate:", error);
     }
 });
 
@@ -312,6 +318,7 @@ client.once('ready', async () => {
     console.log('🚀 Slash-Commands registriert!');
 });
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
 
