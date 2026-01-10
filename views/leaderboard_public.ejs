@@ -50,7 +50,7 @@
 
         @keyframes blinker { 50% { opacity: 0.5; } }
 
-        /* Progress Bar Styling */
+        /* Fortschritt & Roadmap Design */
         .progress-custom {
             height: 6px;
             background: rgba(255,255,255,0.1);
@@ -58,12 +58,24 @@
             overflow: hidden;
             margin-top: 5px;
         }
+        .rank-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        .rank-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: scale(1.05);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .border-accent { border-color: var(--accent) !important; }
     </style>
 </head>
 <body>
 
 <% 
-// Ranking Definition mit Stunden-Anzeige
+// Ranking Definition
 const ranks = [
     { min: 18000, name: "GOD OF MAX WIN", color: "#ffffff", glow: "0 0 15px rgba(255,255,255,0.8)" },
     { min: 16800, name: "Casino Imperator", color: "#ff4500" },
@@ -97,16 +109,21 @@ const getRankInfo = (mins) => {
     return { current, next, progress };
 };
 
-// Hilfsfunktion für die Stundenumrechnung
+// Hilfsfunktion: Minuten zu Stunden (auf 1 Dezimalstelle gerundet)
 const toHours = (mins) => {
     return (mins / 60).toFixed(mins % 60 === 0 ? 0 : 1); 
 };
 %>
 
 <div class="container leaderboard-container">
-    <div class="text-center mb-5">
-        <h1 class="display-5 fw-bold text-accent">STREAM RANKING</h1>
-        <p class="opacity-50 text-uppercase letter-spacing-2"><%= guild.name %></p>
+    <div class="text-center mb-5 mt-4">
+        <% if(guild.icon) { %>
+            <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" 
+                 class="rounded-circle mb-3 shadow-lg border border-accent" 
+                 style="width: 80px; height: 80px; border-width: 3px !important;">
+        <% } %>
+        <h1 class="display-5 fw-bold text-accent" style="letter-spacing: 3px;">STREAM RANKING</h1>
+        <p class="opacity-75 text-uppercase letter-spacing-2 fw-light"><%= guild.name %></p>
     </div>
 
     <% if(trackedUsers.length >= 1) { %>
@@ -122,7 +139,7 @@ const toHours = (mins) => {
                 
                 <h4 class="mb-1 text-truncate"><%= user.username %></h4>
                 
-                <div style="color: <%= info.current.color %>; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px;">
+                <div style="color: <%= info.current.color %>; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; text-shadow: <%= info.current.glow || 'none' %>">
                     <%= info.current.name %>
                 </div>
 
@@ -130,7 +147,7 @@ const toHours = (mins) => {
                     <span class="badge badge-live mb-2">LIVE</span>
                 <% } %>
 
-                <div class="text-accent fw-bold"><%= user.totalMinutes %> Min</div>
+                <div class="text-accent fw-bold"><%= toHours(user.totalMinutes) %> Std.</div>
                 <div class="small opacity-50">Platz <%= index + 1 %></div>
             </div>
         <% }) %>
@@ -165,7 +182,7 @@ const toHours = (mins) => {
                             
                             <div class="d-flex justify-content-between align-items-center mt-1" style="font-size: 0.65rem;">
                                 <span style="color: <%= info.current.color %>; font-weight: 800; text-transform: uppercase;"><%= info.current.name %></span>
-                                <% if(info.next) { %><span class="opacity-50 text-end">Next: <%= info.next.min %>m</span><% } %>
+                                <% if(info.next) { %><span class="opacity-50 text-end">Next: <%= toHours(info.next.min) %>h</span><% } %>
                             </div>
                             
                             <% if(info.next) { %>
@@ -176,7 +193,7 @@ const toHours = (mins) => {
                         </div>
                     </td>
                     <td class="text-end pe-4">
-                        <span class="text-accent fw-bold"><%= user.totalMinutes %></span> <span class="small opacity-50">Min</span>
+                        <span class="text-accent fw-bold"><%= toHours(user.totalMinutes) %></span> <span class="small opacity-50">Std.</span>
                     </td>
                 </tr>
                 <% }) %>
@@ -188,14 +205,20 @@ const toHours = (mins) => {
         </table>
     </div>
 
-    <div class="mt-5 p-4 glass-card">
-        <h5 class="text-accent mb-4"><i class="fas fa-map-signs me-2"></i> Rollen Roadmap</h5>
-        <div class="row g-2">
+    <div class="mt-5 p-4 glass-card border-0 shadow-lg">
+        <h5 class="text-accent mb-4 fw-bold text-center text-uppercase" style="letter-spacing: 2px;">
+            <i class="fas fa-map-signs me-2"></i> Rollen Roadmap
+        </h5>
+        <div class="row g-3">
             <% [...ranks].reverse().forEach(r => { %>
                 <div class="col-6 col-md-4 col-lg-3">
-                    <div class="p-2 border border-secondary rounded text-center" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.05) !important;">
-                        <div style="color: <%= r.color %>; font-size: 0.7rem; font-weight: bold; text-transform: uppercase;"><%= r.name %></div>
-                        <div class="small opacity-50" style="font-size: 0.6rem;"><%= r.min %> Min</div>
+                    <div class="rank-card p-3 h-100 d-flex flex-column align-items-center justify-content-center text-center">
+                        <div style="color: <%= r.color %>; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">
+                            <%= r.name %>
+                        </div>
+                        <div class="mt-1" style="font-size: 0.7rem; color: rgba(255,255,255,0.6);">
+                            <span class="text-white fw-bold"><%= toHours(r.min) %></span> Std.
+                        </div>
                     </div>
                 </div>
             <% }) %>
