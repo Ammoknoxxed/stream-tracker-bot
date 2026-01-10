@@ -7,6 +7,15 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/style.css">
+    <style>
+        .live-timer-active { color: #ff4757 !important; text-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
+        .pulse-live { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
 </head>
 <body>
 
@@ -39,7 +48,14 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <% trackedUsers.forEach((user, index) => { %>
+                            <% trackedUsers.forEach((user, index) => { 
+                                // Live-Berechnung für den Moment des Seitenladens
+                                let displayMinutes = user.totalMinutes;
+                                if (user.isStreaming && user.lastStreamStart) {
+                                    const sessionMins = Math.floor((new Date() - new Date(user.lastStreamStart)) / 60000);
+                                    displayMinutes += sessionMins;
+                                }
+                            %>
                             <tr>
                                 <td class="ps-4">
                                     <% if(index === 0) { %><i class="fas fa-crown rank-gold"></i>
@@ -53,13 +69,20 @@
                                              style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" 
                                              class="border border-2 <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
                                         <% if(user.isStreaming) { %>
-                                            <span class="position-absolute translate-middle badge rounded-pill bg-danger" 
+                                            <span class="position-absolute translate-middle badge rounded-pill bg-danger pulse-live" 
                                                   style="font-size: 0.5rem; bottom: -12px; left: 20px; border: 2px solid var(--bg-dark);">LIVE</span>
                                         <% } %>
                                     </div>
                                     <span class="fw-bold"><%= user.username %></span>
                                 </td>
-                                <td><span class="text-accent fw-bold"><%= user.totalMinutes %></span> <span class="small opacity-50">Min</span></td>
+                                <td>
+                                    <span class="text-accent fw-bold live-timer-container <%= user.isStreaming ? 'live-timer-active' : '' %>"
+                                          data-base="<%= user.totalMinutes %>"
+                                          data-start="<%= user.isStreaming && user.lastStreamStart ? user.lastStreamStart.toISOString() : 'null' %>">
+                                        <%= displayMinutes %>
+                                    </span> 
+                                    <span class="small opacity-50">Min</span>
+                                </td>
                                 <td class="text-end pe-4">
                                     <form action="/dashboard/<%= guild.id %>/delete-user" method="POST" onsubmit="return confirm('Statistik wirklich löschen?')">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
@@ -78,7 +101,6 @@
         </div>
 
         <div class="col-lg-4">
-            
             <div class="glass-card p-4 mb-4">
                 <h5 class="mb-3 text-accent"><i class="fas fa-gift me-2"></i> Belohnungen</h5>
                 <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-4">
@@ -93,7 +115,6 @@
                     </select>
                     <button class="btn btn-cyber btn-sm w-100">Hinzufügen</button>
                 </form>
-
                 <div class="reward-list">
                     <% config.rewards.forEach((r, i) => { %>
                         <div class="d-flex justify-content-between align-items-center p-2 mb-2 rounded bg-white bg-opacity-5 small">
@@ -109,7 +130,6 @@
 
             <div class="glass-card p-4">
                 <h5 class="mb-3 text-accent"><i class="fas fa-microphone-lines me-2"></i> Kanäle</h5>
-                <p class="small opacity-50">Wähle die erlaubten Voice-Channels:</p>
                 <form action="/dashboard/<%= guild.id %>/save-channels" method="POST">
                     <div class="channel-selector mb-3 p-2 bg-dark bg-opacity-50 rounded" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);">
                         <% channels.forEach(ch => { %>
@@ -125,10 +145,32 @@
                     <button class="btn btn-cyber btn-sm w-100">Kanäle Speichern</button>
                 </form>
             </div>
-
         </div>
     </div>
 </div>
+
+<script>
+    function updateLiveMinutes() {
+        const now = new Date();
+        document.querySelectorAll('.live-timer-container').forEach(el => {
+            const startStr = el.getAttribute('data-start');
+            const baseMins = parseInt(el.getAttribute('data-base'));
+            
+            if (startStr && startStr !== 'null') {
+                const startTime = new Date(startStr);
+                const diffMs = now - startTime;
+                
+                if (diffMs > 0) {
+                    const sessionMinutes = Math.floor(diffMs / 60000);
+                    el.innerText = baseMins + sessionMinutes;
+                }
+            }
+        });
+    }
+
+    // Alle 10 Sekunden aktualisieren
+    setInterval(updateLiveMinutes, 10000);
+</script>
 
 </body>
 </html>
