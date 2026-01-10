@@ -160,10 +160,16 @@ app.get('/logout', (req, res) => {
 
 // --- 4. TRACKING LOGIK ---
 
-async function handleStreamStart(userId, guildId, username) {
+// Diese Funktion steht ca. in der Mitte deiner index.js
+async function handleStreamStart(userId, guildId, username, avatar) {
     await StreamUser.findOneAndUpdate(
         { userId, guildId },
-        { isStreaming: true, lastStreamStart: new Date(), username },
+        { 
+            isStreaming: true, 
+            lastStreamStart: new Date(), 
+            username, 
+            avatar: avatar // Speichert den Link zum Profilbild
+        },
         { upsert: true }
     );
     console.log(`📡 [START] ${username} wird getrackt.`);
@@ -275,6 +281,7 @@ client.once('ready', async () => {
     console.log('🚀 Slash-Commands registriert!');
 });
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
 
 
 
