@@ -77,16 +77,21 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-// ÖFFENTLICHES LEADERBOARD (Optimiert für Live-Anzeige)
-app.get('/leaderboard/:guildId', async (req, res) => {
-    const guildId = req.params.guildId;
-    const guild = client.guilds.cache.get(guildId);
-    if (!guild) return res.send("Leaderboard nicht gefunden.");
+app.get('/leaderboard/:identifier', async (req, res) => {
+    const identifier = req.params.identifier;
+    let guild;
 
-    // Wir holen die User und sortieren sie
-    const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
+    // 1. Suche den Server (zuerst per ID, dann per Name)
+    guild = client.guilds.cache.get(identifier) || 
+            client.guilds.cache.find(g => g.name.toLowerCase().replace(/\s+/g, '-') === identifier.toLowerCase());
+
+    if (!guild) {
+        return res.status(404).send("Leaderboard nicht gefunden. Tipp: Der Bot muss auf dem Server sein.");
+    }
+
+    const trackedUsers = await StreamUser.find({ guildId: guild.id }).sort({ totalMinutes: -1 });
     
-    // Wir übergeben das echte Guild-Objekt (für das Icon) und die User
+    // Die Seite rendern
     res.render('leaderboard_public', { guild, trackedUsers });
 });
 
@@ -263,9 +268,20 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+
     if (interaction.commandName === 'leaderboard') {
-        const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${interaction.guildId}`;
-        await interaction.reply({ content: `🏆 **Hier ist das aktuelle Stream-Ranking:**\n${lbLink}`, ephemeral: false });
+        // Erstellt einen "Slug" aus dem Servernamen: "Mein Server" -> "mein-server"
+        const serverSlug = interaction.guild.name
+            .toLowerCase()
+            .replace(/[^\w\s-]/g, '') // Entfernt Sonderzeichen
+            .replace(/\s+/g, '-');    // Ersetzt Leerzeichen durch Bindestriche
+
+        const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${serverSlug}`;
+        
+        await interaction.reply({ 
+            content: `🏆 **Hier ist das aktuelle Stream-Ranking für ${interaction.guild.name}:**\n${lbLink}`, 
+            ephemeral: false 
+        });
     }
 });
 
@@ -287,3 +303,4 @@ client.once('ready', async () => {
 });
 
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+
