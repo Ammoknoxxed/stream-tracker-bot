@@ -66,6 +66,20 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Hilfsfunktion zur Echtzeit-Sortierung
+function getSortedUsers(users) {
+    const now = new Date();
+    return users.map(user => {
+        const u = user.toObject();
+        u.effectiveMinutes = u.totalMinutes;
+        if (u.isStreaming && u.lastStreamStart) {
+            const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
+            if (diff > 0) u.effectiveMinutes += diff;
+        }
+        return u;
+    }).sort((a, b) => b.effectiveMinutes - a.effectiveMinutes);
+}
+
 // --- ROUTES ---
 app.get('/', (req, res) => res.render('index'));
 app.get('/login', passport.authenticate('discord'));
@@ -77,33 +91,15 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-// --- OPTIMIERTES LEADERBOARD MIT ECHTZEIT-SORTIERUNG ---
 app.get('/leaderboard/:identifier', async (req, res) => {
     const identifier = req.params.identifier;
-    let guild;
+    let guild = client.guilds.cache.get(identifier) || 
+                client.guilds.cache.find(g => g.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-') === identifier.toLowerCase());
 
-    guild = client.guilds.cache.get(identifier) || 
-            client.guilds.cache.find(g => g.name.toLowerCase().replace(/\s+/g, '-') === identifier.toLowerCase());
+    if (!guild) return res.status(404).send("Leaderboard nicht gefunden.");
 
-    if (!guild) {
-        return res.status(404).send("Leaderboard nicht gefunden. Tipp: Der Bot muss auf dem Server sein.");
-    }
-
-    // Alle User laden
-    let users = await StreamUser.find({ guildId: guild.id });
-
-    // Echtzeit-Minuten für die Sortierung berechnen
-    const now = new Date();
-    const trackedUsers = users.map(user => {
-        const u = user.toObject();
-        u.effectiveMinutes = u.totalMinutes;
-        
-        if (u.isStreaming && u.lastStreamStart) {
-            const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
-            if (diff > 0) u.effectiveMinutes += diff;
-        }
-        return u;
-    }).sort((a, b) => b.effectiveMinutes - a.effectiveMinutes); // Sortiere nach berechneter Zeit
+    const users = await StreamUser.find({ guildId: guild.id });
+    const trackedUsers = getSortedUsers(users);
 
     res.render('leaderboard_public', { guild, trackedUsers });
 });
@@ -117,8 +113,10 @@ app.get('/dashboard/:guildId', async (req, res) => {
     let config = await GuildConfig.findOne({ guildId });
     if (!config) config = await GuildConfig.create({ guildId, rewards: [], allowedChannels: [] });
 
-    // Auch im Dashboard nach Zeit sortieren
-    const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
+    // Hier wird nun ebenfalls die Echtzeit-Sortierung angewendet
+    const users = await StreamUser.find({ guildId });
+    const trackedUsers = getSortedUsers(users);
+
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
     const channels = guild.channels.cache
         .filter(c => c.type === 2 || c.type === 4)
@@ -297,8 +295,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 client.login(process.env.TOKEN);
 
-// Umbenannt von 'ready' zu 'clientReady' wegen DeprecationWarning
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
     const data = { name: 'leaderboard', description: 'Zeigt den Link zum Ranking an' };
     try {
