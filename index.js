@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require('discord.js'); // EmbedBuilder hinzugefügt
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require('discord.js');
 const express = require('express');
 const passport = require('passport');
 const { Strategy } = require('passport-discord');
@@ -7,27 +7,27 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
-// --- 0. RANG KONFIGURATION (Hardcore Werte) ---
+// --- 0. RANG KONFIGURATION ---
 const ranks = [
-    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },   // 1000 Std.
-    { min: 45000, name: "Casino Imperator", color: "#ff4500" }, // 750 Std.
-    { min: 30000, name: "Jackpot Legende", color: "#f1c40f" },  // 500 Std.
-    { min: 20000, name: "Haus Elite", color: "#d35400" },       // 333 Std. 20 Min.
-    { min: 15000, name: "Zucker Baron", color: "#e91e63" },     // 250 Std.
-    { min: 10000, name: "High Roller", color: "#8e44ad" },      // 166 Std. 40 Min.
-    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff" },   // 125 Std.
-    { min: 5000,  name: "Multi König", color: "#1a5276" },      // 83 Std. 20 Min.
-    { min: 3500,  name: "Scatter Profi", color: "#2980b9" },    // 58 Std. 20 Min.
-    { min: 2500,  name: "Bonus Shopper", color: "#3498db" },    // 41 Std. 40 Min.
-    { min: 1800,  name: "Risiko Experte", color: "#145a32" },   // 30 Std.
-    { min: 1200,  name: "Big Gambler", color: "#1f8b4c" },      // 20 Std.
-    { min: 800,   name: "Rejuicer", color: "#1db954" },         // 13 Std. 20 Min.
-    { min: 500,   name: "Bonus Magnet", color: "#2ecc71" },     // 8 Std. 20 Min.
-    { min: 300,   name: "Stammgast", color: "#e5e4e2" },        // 5 Std.
-    { min: 150,   name: "Dauerdreher", color: "#dcddde" },      // 2 Std. 30 Min.
-    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d" }, // 1 Std.
-    { min: 20,    name: "Glücksjäger", color: "#bdc3c7" },      // 20 Min.
-    { min: 0,     name: "Casino Gast", color: "#95a5a6" }       // 0 Min.
+    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
+    { min: 45000, name: "Casino Imperator", color: "#ff4500" },
+    { min: 30000, name: "Jackpot Legende", color: "#f1c40f" },
+    { min: 20000, name: "Haus Elite", color: "#d35400" },
+    { min: 15000, name: "Zucker Baron", color: "#e91e63" },
+    { min: 10000, name: "High Roller", color: "#8e44ad" },
+    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff" },
+    { min: 5000,  name: "Multi König", color: "#1a5276" },
+    { min: 3500,  name: "Scatter Profi", color: "#2980b9" },
+    { min: 2500,  name: "Bonus Shopper", color: "#3498db" },
+    { min: 1800,  name: "Risiko Experte", color: "#145a32" },
+    { min: 1200,  name: "Big Gambler", color: "#1f8b4c" },
+    { min: 800,   name: "Rejuicer", color: "#1db954" },
+    { min: 500,   name: "Bonus Magnet", color: "#2ecc71" },
+    { min: 300,   name: "Stammgast", color: "#e5e4e2" },
+    { min: 150,   name: "Dauerdreher", color: "#dcddde" },
+    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d" },
+    { min: 20,    name: "Glücksjäger", color: "#bdc3c7" },
+    { min: 0,     name: "Casino Gast", color: "#95a5a6" }
 ];
 
 // --- 1. DATENBANK MODELLE ---
@@ -45,7 +45,8 @@ const streamUserSchema = new mongoose.Schema({
     avatar: String,
     totalMinutes: { type: Number, default: 0 },
     lastStreamStart: Date,
-    isStreaming: { type: Boolean, default: false }
+    isStreaming: { type: Boolean, default: false },
+    lastNotifiedRank: { type: String, default: "Casino Gast" } // Neu für Level-Up News
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
@@ -94,7 +95,6 @@ app.use(passport.session());
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith('!rank')) return;
 
-    // HIER DEINE KANAL-ID EINTRAGEN
     const allowedChannelId = '1459882167848145073'; 
 
     if (message.channel.id !== allowedChannelId) {
@@ -134,15 +134,14 @@ client.on('messageCreate', async (message) => {
                 name: 'Nächstes Ziel', 
                 value: `**${nextRank.name}**\nNoch **${Math.floor(needed / 60)} Std. ${needed % 60} Min.** nötig.` 
             });
-            
-            // Kleiner Fortschrittsbalken
             const percent = Math.min(Math.floor((totalMins / nextRank.min) * 100), 100);
             embed.setFooter({ text: `Fortschritt: ${percent}% zum nächsten Rang` });
         } else {
             embed.addFields({ name: 'Status', value: '🏆 Du hast den maximalen Rang erreicht!' });
         }
 
-        message.reply({ embeds: [embed] });
+        message.channel.send({ embeds: [embed] });
+        message.delete().catch(() => {});
 
     } catch (err) {
         console.error(err);
@@ -150,8 +149,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// --- RESTLICHE FUNKTIONEN (getSortedUsers, handleStream etc.) ---
-
+// --- HELPER ---
 function getSortedUsers(users) {
     const now = new Date();
     return users.map(user => {
@@ -177,23 +175,6 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-app.get('/leaderboard/:identifier', async (req, res) => {
-    const identifier = req.params.identifier;
-    let guild = client.guilds.cache.get(identifier) || 
-                client.guilds.cache.find(g => g.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-') === identifier.toLowerCase());
-
-    if (!guild) return res.status(404).send("Leaderboard nicht gefunden.");
-    const users = await StreamUser.find({ guildId: guild.id });
-    const trackedUsers = getSortedUsers(users);
-
-    res.render('leaderboard_public', { 
-        guild, 
-        allTimeLeaderboard: trackedUsers, 
-        monthlyLeaderboard: trackedUsers,
-        monthName: "Gesamt" 
-    });
-});
-
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const guildId = req.params.guildId;
@@ -212,6 +193,28 @@ app.get('/dashboard/:guildId', async (req, res) => {
         .map(c => ({ id: c.id, name: c.name, type: c.type }));
 
     res.render('settings', { guild, config, trackedUsers, roles, channels });
+});
+
+// NEUE ROUTE: Manuelle Zeitanpassung
+app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/');
+    const { userId, minutes } = req.body;
+    const guildId = req.params.guildId;
+    const adjustment = parseInt(minutes);
+
+    if (isNaN(adjustment)) return res.redirect(`/dashboard/${guildId}`);
+
+    try {
+        const userData = await StreamUser.findOne({ userId, guildId });
+        if (userData) {
+            userData.totalMinutes = Math.max(0, userData.totalMinutes + adjustment);
+            await userData.save();
+        }
+        res.redirect(`/dashboard/${guildId}`);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fehler beim Anpassen.");
+    }
 });
 
 app.post('/dashboard/:guildId/save', async (req, res) => {
@@ -352,19 +355,41 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     }
 });
 
+// INTERVALL: Rollenvergabe & Level-Up News
 setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
+    const statusChannelId = '1459882167848145073'; // Kanal für Level-Up News
+
     for (const userData of allUsers) {
         let effectiveMinutes = userData.totalMinutes;
         if (userData.isStreaming && userData.lastStreamStart) {
             const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
             if (currentDiff > 0) effectiveMinutes += currentDiff;
         }
+
+        const currentRank = ranks.find(r => effectiveMinutes >= r.min) || ranks[ranks.length - 1];
+
+        // Level-Up Benachrichtigung
+        if (userData.lastNotifiedRank !== currentRank.name) {
+            const channel = client.channels.cache.get(statusChannelId);
+            if (channel) {
+                const levelEmbed = new EmbedBuilder()
+                    .setTitle("🎉 RANG-AUFSTIEG!")
+                    .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
+                    .setColor(currentRank.color)
+                    .setThumbnail(userData.avatar);
+                channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] });
+            }
+            userData.lastNotifiedRank = currentRank.name;
+            await userData.save();
+        }
+
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards || config.rewards.length === 0) continue;
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) continue;
+
         try {
             const member = await guild.members.fetch(userData.userId).catch(() => null);
             if (!member) continue;
@@ -385,6 +410,3 @@ client.once('ready', async () => {
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
-
-
-
