@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
-// --- 0. RANG KONFIGURATION ---
+// --- 0. RANG KONFIGURATION (Visuelle Ränge im Embed) ---
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500" },
@@ -166,7 +166,6 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-// ÖFFENTLICHES LEADERBOARD (DIE FEHLENDE ROUTE)
 app.get('/leaderboard/:guildId', async (req, res) => {
     try {
         const guildId = req.params.guildId;
@@ -307,7 +306,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     } else { await handleStreamStop(newState.id, guildId); }
 });
 
-// INTERVALL: Rollenvergabe & Level-Up News
+// INTERVALL: Rollenvergabe (JETZT MIT AUTOMATISCHEM ENTFERNEN) & Level-Up News
 setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
@@ -322,7 +321,7 @@ setInterval(async () => {
 
         const currentRank = ranks.find(r => effectiveMinutes >= r.min) || ranks[ranks.length - 1];
 
-        // --- HIER DEN TEXT ANPASSEN ---
+        // --- LEVEL UP NEWS ---
         if (userData.lastNotifiedRank !== currentRank.name) {
             const channel = client.channels.cache.get(statusChannelId);
             if (channel) {
@@ -336,17 +335,36 @@ setInterval(async () => {
             userData.lastNotifiedRank = currentRank.name;
             await userData.save();
         }
-        // --- ENDE TEXT ANPASSUNG ---
 
+        // --- AUTOMATISCHE ROLLENVERGABE (ENTFERNT ALTE ROLLEN) ---
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
-        if (config && config.rewards) {
+        if (config && config.rewards && config.rewards.length > 0) {
             const guild = client.guilds.cache.get(userData.guildId);
             if (guild) {
                 const member = await guild.members.fetch(userData.userId).catch(() => null);
                 if (member) {
-                    for (const reward of config.rewards) {
-                        if (effectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                            await member.roles.add(reward.roleId).catch(() => {});
+                    // 1. Welche Belohnungen hat der User zeitlich erreicht?
+                    const earnedRewards = config.rewards
+                        .filter(r => effectiveMinutes >= r.minutesRequired)
+                        .sort((a, b) => b.minutesRequired - a.minutesRequired);
+
+                    const topReward = earnedRewards[0]; // Das ist die höchste verdiente Rolle
+
+                    if (topReward) {
+                        // 2. Entferne alle ANDEREN Belohnungs-Rollen aus dem Dashboard beim User
+                        const otherRewardRoleIds = config.rewards
+                            .filter(r => r.roleId !== topReward.roleId)
+                            .map(r => r.roleId);
+
+                        for (const roleId of otherRewardRoleIds) {
+                            if (member.roles.cache.has(roleId)) {
+                                await member.roles.remove(roleId).catch(() => {});
+                            }
+                        }
+
+                        // 3. Füge die höchste Rolle hinzu, falls er sie noch nicht hat
+                        if (!member.roles.cache.has(topReward.roleId)) {
+                            await member.roles.add(topReward.roleId).catch(() => {});
                         }
                     }
                 }
