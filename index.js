@@ -28,6 +28,20 @@ const streamUserSchema = new mongoose.Schema({
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
+// NEU: Modell für die Monats-Chronik
+const monthlyArchiveSchema = new mongoose.Schema({
+    guildId: String,
+    monthName: String,
+    year: Number,
+    timestamp: { type: Date, default: Date.now },
+    topStreamers: [{
+        username: String,
+        minutes: Number,
+        userId: String
+    }]
+});
+const MonthlyArchive = mongoose.model('MonthlyArchive', monthlyArchiveSchema);
+
 // --- 2. BOT SETUP ---
 const client = new Client({
     intents: [
@@ -76,7 +90,7 @@ async function getProcessedLeaderboards(guildId) {
     const currentMonth = now.getMonth();
 
     const processed = await Promise.all(users.map(async (user) => {
-        // ZUSÄTZLICHER SICHERHEITS-CHECK: MONATS-RESET LOGIK (Lazy Reset beim Laden)
+        // LAZY RESET: Falls ein User geladen wird, dessen Monat noch alt ist
         if (user.lastUpdateMonth !== currentMonth) {
             user.monthlyMinutes = 0;
             user.lastUpdateMonth = currentMonth;
@@ -96,7 +110,10 @@ async function getProcessedLeaderboards(guildId) {
 
     return {
         allTime: [...processed].sort((a, b) => b.effectiveTotal - a.effectiveTotal),
-        monthly: [...processed].sort((a, b) => b.effectiveMonthly - a.effectiveMonthly)
+        // FILTER: Im monatlichen Ranking nur Leute mit > 0 Minuten anzeigen (löscht sie optisch)
+        monthly: [...processed]
+            .filter(u => u.effectiveMonthly > 0)
+            .sort((a, b) => b.effectiveMonthly - a.effectiveMonthly)
     };
 }
 
@@ -134,6 +151,18 @@ app.get('/leaderboard/:identifier', async (req, res) => {
     }
 });
 
+// NEUE ROUTE: Chronik / Archiv
+app.get('/leaderboard/:identifier/archive', async (req, res) => {
+    const identifier = req.params.identifier;
+    let guild = client.guilds.cache.get(identifier) || 
+                client.guilds.cache.find(g => g.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-') === identifier.toLowerCase());
+
+    if (!guild) return res.status(404).send("Server nicht gefunden.");
+
+    const archive = await MonthlyArchive.find({ guildId: guild.id }).sort({ timestamp: -1 });
+    res.render('archive', { guild, archive }); // Du müsstest eine archive.ejs erstellen
+});
+
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const guildId = req.params.guildId;
@@ -153,7 +182,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers: boards.allTime, roles, channels });
 });
 
-// (Dashboard POST Routen bleiben gleich...)
+// (Post-Routen wie gehabt...)
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -194,7 +223,7 @@ app.post('/dashboard/:guildId/delete-user', async (req, res) => {
 
 app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 
-// --- 4. TRACKING LOGIK ---
+// --- 4. TRACKING LOGIK (Unverändert) ---
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
@@ -203,7 +232,6 @@ async function handleStreamStart(userId, guildId, username, avatarURL) {
             { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
             { upsert: true }
         );
-        console.log(`📡 [START] ${username}`);
     } catch (err) { console.error(err); }
 }
 
@@ -216,7 +244,6 @@ async function handleStreamStop(userId, guildId) {
         const minutes = Math.round((now - userData.lastStreamStart) / 60000);
         
         if (minutes >= 1) {
-            // MONATS-RESET CHECK (Falls CronJob noch nicht lief)
             if (userData.lastUpdateMonth !== now.getMonth()) {
                 userData.monthlyMinutes = 0;
                 userData.lastUpdateMonth = now.getMonth();
@@ -243,7 +270,7 @@ async function handleStreamStop(userId, guildId) {
     } catch (err) { console.error(err); }
 }
 
-// Event-Listener (voiceStateUpdate, presenceUpdate, setInterval...)
+// Events
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
     const channel = newState.channel;
@@ -272,41 +299,55 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     }
 });
 
-setInterval(async () => {
-    const now = new Date();
-    const activeStreamers = await StreamUser.find({ isStreaming: true });
-    for (const userData of activeStreamers) {
-        const totalEffectiveMinutes = (userData.totalMinutes || 0) + Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
-        const config = await GuildConfig.findOne({ guildId: userData.guildId });
-        if (!config) continue;
-        const guild = client.guilds.cache.get(userData.guildId);
-        const member = await guild?.members.fetch(userData.userId).catch(() => null);
-        if (member) {
-            for (const reward of config.rewards) {
-                if (totalEffectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                    await member.roles.add(reward.roleId).catch(() => {});
-                }
-            }
-        }
-    }
-}, 5 * 60000);
-
-// --- MONATS-RESET AUTOMATIK (Hard Reset am 1. des Monats) ---
+// --- MONATS-RESET & ARCHIVIERUNG AUTOMATIK ---
 setInterval(async () => {
     const now = new Date();
     // Wenn heute der 1. Tag des Monats ist...
     if (now.getDate() === 1) {
         const currentMonth = now.getMonth();
-        // Alle User resetten, die noch den alten Monat im lastUpdateMonth stehen haben
-        const result = await StreamUser.updateMany(
-            { lastUpdateMonth: { $ne: currentMonth } },
-            { $set: { monthlyMinutes: 0, lastUpdateMonth: currentMonth } }
-        );
-        if (result.modifiedCount > 0) {
-            console.log(`📅 Monats-Reset durchgeführt: ${result.modifiedCount} User zurückgesetzt.`);
+        
+        // 1. Archivierung vorbereiten
+        const lastMonthDate = new Date();
+        lastMonthDate.setMonth(now.getMonth() - 1);
+        const monthLabel = lastMonthDate.toLocaleString('de-DE', { month: 'long' });
+        const yearLabel = lastMonthDate.getFullYear();
+
+        // Prüfen, ob für diesen Monat schon archiviert wurde
+        const exists = await MonthlyArchive.findOne({ monthName: monthLabel, year: yearLabel });
+        
+        if (!exists) {
+            console.log(`📅 Archivierung für ${monthLabel} gestartet...`);
+            
+            // Für jede Guild die Top 10 speichern
+            const guilds = client.guilds.cache;
+            for (const [guildId, guild] of guilds) {
+                const topUsers = await StreamUser.find({ guildId, monthlyMinutes: { $gt: 0 } })
+                    .sort({ monthlyMinutes: -1 })
+                    .limit(10);
+
+                if (topUsers.length > 0) {
+                    await MonthlyArchive.create({
+                        guildId: guildId,
+                        monthName: monthLabel,
+                        year: yearLabel,
+                        topStreamers: topUsers.map(u => ({
+                            username: u.username,
+                            minutes: u.monthlyMinutes,
+                            userId: u.userId
+                        }))
+                    });
+                }
+            }
+
+            // 2. Hard Reset: Alle User auf 0 setzen
+            const result = await StreamUser.updateMany(
+                {}, 
+                { $set: { monthlyMinutes: 0, lastUpdateMonth: currentMonth } }
+            );
+            console.log(`✅ Archivierung beendet. ${result.modifiedCount} Profile für den neuen Monat geleert.`);
         }
     }
-}, 12 * 60 * 60 * 1000); // Prüft alle 12 Stunden
+}, 6 * 60 * 60 * 1000); // Alle 6 Stunden prüfen
 
 // --- START ---
 mongoose.connect(process.env.MONGO_URI).then(() => {
