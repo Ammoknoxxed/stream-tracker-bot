@@ -46,7 +46,7 @@ const streamUserSchema = new mongoose.Schema({
     totalMinutes: { type: Number, default: 0 },
     lastStreamStart: Date,
     isStreaming: { type: Boolean, default: false },
-    lastNotifiedRank: { type: String, default: "Casino Gast" } // Neu für Level-Up News
+    lastNotifiedRank: { type: String, default: "Casino Gast" }
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
@@ -94,7 +94,6 @@ app.use(passport.session());
 // --- STATUS CHECK COMMAND ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith('!rank')) return;
-
     const allowedChannelId = '1459882167848145073'; 
 
     if (message.channel.id !== allowedChannelId) {
@@ -109,12 +108,10 @@ client.on('messageCreate', async (message) => {
     try {
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
         let totalMins = userData ? userData.totalMinutes : 0;
-
         if (userData?.isStreaming && userData.lastStreamStart) {
             const diff = Math.floor((new Date() - new Date(userData.lastStreamStart)) / 60000);
             if (diff > 0) totalMins += diff;
         }
-
         const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
         const nextRankIndex = ranks.indexOf(currentRank) - 1;
         const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
@@ -139,14 +136,9 @@ client.on('messageCreate', async (message) => {
         } else {
             embed.addFields({ name: 'Status', value: '🏆 Du hast den maximalen Rang erreicht!' });
         }
-
         message.channel.send({ embeds: [embed] });
         message.delete().catch(() => {});
-
-    } catch (err) {
-        console.error(err);
-        message.reply("Fehler beim Abrufen der Daten.");
-    }
+    } catch (err) { console.error(err); message.reply("Fehler beim Abrufen der Daten."); }
 });
 
 // --- HELPER ---
@@ -159,7 +151,6 @@ function getSortedUsers(users) {
             const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
             if (diff > 0) u.effectiveTotal += diff;
         }
-        u.effectiveMonthly = u.effectiveTotal; 
         return u;
     }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
 }
@@ -175,6 +166,27 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
+// ÖFFENTLICHES LEADERBOARD (DIE FEHLENDE ROUTE)
+app.get('/leaderboard/:guildId', async (req, res) => {
+    try {
+        const guildId = req.params.guildId;
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) return res.status(404).send("Server nicht gefunden.");
+
+        const users = await StreamUser.find({ guildId });
+        const trackedUsers = getSortedUsers(users);
+
+        res.render('leaderboard_public', { 
+            guild, 
+            allTimeLeaderboard: trackedUsers,
+            monthName: "Gesamtstatistik" 
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fehler beim Laden des Leaderboards.");
+    }
+});
+
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const guildId = req.params.guildId;
@@ -188,22 +200,17 @@ app.get('/dashboard/:guildId', async (req, res) => {
     const trackedUsers = getSortedUsers(users);
 
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
-    const channels = guild.channels.cache
-        .filter(c => c.type === 2 || c.type === 4)
-        .map(c => ({ id: c.id, name: c.name, type: c.type }));
+    const channels = guild.channels.cache.filter(c => c.type === 2 || c.type === 4).map(c => ({ id: c.id, name: c.name, type: c.type }));
 
     res.render('settings', { guild, config, trackedUsers, roles, channels });
 });
 
-// NEUE ROUTE: Manuelle Zeitanpassung
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const { userId, minutes } = req.body;
     const guildId = req.params.guildId;
     const adjustment = parseInt(minutes);
-
     if (isNaN(adjustment)) return res.redirect(`/dashboard/${guildId}`);
-
     try {
         const userData = await StreamUser.findOne({ userId, guildId });
         if (userData) {
@@ -211,20 +218,14 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
             await userData.save();
         }
         res.redirect(`/dashboard/${guildId}`);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("Fehler beim Anpassen.");
-    }
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
     const role = guild.roles.cache.get(roleId);
-    await GuildConfig.findOneAndUpdate(
-        { guildId: req.params.guildId },
-        { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } }
-    );
+    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } });
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
@@ -232,11 +233,7 @@ app.post('/dashboard/:guildId/save-channels', async (req, res) => {
     let { channels } = req.body;
     if (!channels) channels = [];
     if (!Array.isArray(channels)) channels = [channels];
-    await GuildConfig.findOneAndUpdate(
-        { guildId: req.params.guildId },
-        { allowedChannels: channels },
-        { upsert: true }
-    );
+    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { allowedChannels: channels }, { upsert: true });
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
@@ -258,60 +255,42 @@ app.post('/dashboard/:guildId/delete-user', async (req, res) => {
 app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 
 // --- TRACKING LOGIK ---
-
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
         const user = await StreamUser.findOne({ userId, guildId });
         if (!user || !user.isStreaming) {
             await StreamUser.findOneAndUpdate(
                 { userId, guildId },
-                { 
-                    isStreaming: true, 
-                    lastStreamStart: new Date(), 
-                    username: username,
-                    avatar: avatarURL 
-                },
+                { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
                 { upsert: true }
             );
-            console.log(`📡 [START] ${username} (${guildId})`);
+            console.log(`📡 [START] ${username}`);
         }
-    } catch (err) { console.error("Fehler in handleStreamStart:", err); }
+    } catch (err) { console.error(err); }
 }
 
 async function handleStreamStop(userId, guildId) {
     try {
         const userData = await StreamUser.findOne({ userId, guildId });
         if (!userData || !userData.lastStreamStart || !userData.isStreaming) return;
-
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
-        if (minutes >= 1) {
-            userData.totalMinutes += minutes;
-            console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min.`);
-        }
+        if (minutes >= 1) userData.totalMinutes += minutes;
         userData.isStreaming = false;
         userData.lastStreamStart = null;
         await userData.save();
-    } catch (err) { console.error("Fehler in handleStreamStop:", err); }
+    } catch (err) { console.error(err); }
 }
 
 async function scanActiveStreams() {
-    console.log("🔍 Scanne laufende Streams...");
     for (const [guildId, guild] of client.guilds.cache) {
         const config = await GuildConfig.findOne({ guildId });
         for (const [memberId, member] of guild.members.cache) {
             if (member.user.bot) continue;
-            const voiceState = member.voice;
-            const channel = voiceState.channel;
-            if (channel && voiceState.streaming) {
-                const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
-                                   config.allowedChannels.includes(channel.id) || 
-                                   (channel.parentId && config.allowedChannels.includes(channel.parentId));
-
-                if (isAllowed) {
-                    const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== memberId).size;
-                    if (viewerCount > 0) {
-                        await handleStreamStart(memberId, guildId, member.user.username, member.user.displayAvatarURL());
-                    }
+            const vs = member.voice;
+            if (vs.channel && vs.streaming) {
+                const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || config.allowedChannels.includes(vs.channel.id);
+                if (isAllowed && vs.channel.members.filter(m => !m.user.bot && m.id !== memberId).size > 0) {
+                    await handleStreamStart(memberId, guildId, member.user.username, member.user.displayAvatarURL());
                 }
             }
         }
@@ -319,47 +298,20 @@ async function scanActiveStreams() {
 }
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    try {
-        const guildId = newState.guild.id;
-        const channel = newState.channel;
-        if (!channel || !newState.streaming) {
-            await handleStreamStop(newState.id, guildId);
-            return;
-        }
-        const config = await GuildConfig.findOne({ guildId });
-        const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
-                           config.allowedChannels.includes(channel.id) || 
-                           (channel.parentId && config.allowedChannels.includes(channel.parentId));
-
-        if (!isAllowed) {
-            await handleStreamStop(newState.id, guildId);
-            return;
-        }
-        const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
-        if (viewerCount > 0) {
-            await handleStreamStart(newState.id, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
-        } else {
-            await handleStreamStop(newState.id, guildId);
-        }
-    } catch (error) { console.error(error); }
-});
-
-client.on('presenceUpdate', async (oldPresence, newPresence) => {
-    if (!newPresence || !newPresence.guild) return;
-    const isStreaming = newPresence.activities.some(a => a.type === 1);
-    const wasStreaming = oldPresence?.activities.some(a => a.type === 1);
-    if (isStreaming && !wasStreaming) {
-        await handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username, newPresence.user.displayAvatarURL());
-    } else if (!isStreaming && wasStreaming) {
-        await handleStreamStop(newPresence.userId, newPresence.guild.id);
-    }
+    const guildId = newState.guild.id;
+    if (!newState.channel || !newState.streaming) { await handleStreamStop(newState.id, guildId); return; }
+    const config = await GuildConfig.findOne({ guildId });
+    const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || config.allowedChannels.includes(newState.channel.id);
+    if (isAllowed && newState.channel.members.filter(m => !m.user.bot && m.id !== newState.id).size > 0) {
+        await handleStreamStart(newState.id, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
+    } else { await handleStreamStop(newState.id, guildId); }
 });
 
 // INTERVALL: Rollenvergabe & Level-Up News
 setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
-    const statusChannelId = '1459882167848145073'; // Kanal für Level-Up News
+    const statusChannelId = '1459882167848145073'; 
 
     for (const userData of allUsers) {
         let effectiveMinutes = userData.totalMinutes;
@@ -370,7 +322,7 @@ setInterval(async () => {
 
         const currentRank = ranks.find(r => effectiveMinutes >= r.min) || ranks[ranks.length - 1];
 
-        // Level-Up Benachrichtigung
+        // --- HIER DEN TEXT ANPASSEN ---
         if (userData.lastNotifiedRank !== currentRank.name) {
             const channel = client.channels.cache.get(statusChannelId);
             if (channel) {
@@ -384,21 +336,22 @@ setInterval(async () => {
             userData.lastNotifiedRank = currentRank.name;
             await userData.save();
         }
+        // --- ENDE TEXT ANPASSUNG ---
 
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
-        if (!config || !config.rewards || config.rewards.length === 0) continue;
-        const guild = client.guilds.cache.get(userData.guildId);
-        if (!guild) continue;
-
-        try {
-            const member = await guild.members.fetch(userData.userId).catch(() => null);
-            if (!member) continue;
-            for (const reward of config.rewards) {
-                if (effectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                    await member.roles.add(reward.roleId).catch(() => {});
+        if (config && config.rewards) {
+            const guild = client.guilds.cache.get(userData.guildId);
+            if (guild) {
+                const member = await guild.members.fetch(userData.userId).catch(() => null);
+                if (member) {
+                    for (const reward of config.rewards) {
+                        if (effectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
+                            await member.roles.add(reward.roleId).catch(() => {});
+                        }
+                    }
                 }
             }
-        } catch (e) { console.error(e); }
+        }
     }
 }, 5 * 60000);
 
