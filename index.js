@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
-// --- 1. DATENBANK MODELLE ---
+// --- 1. DATENBANK MODELLE (Monthly entfernt) ---
 const guildConfigSchema = new mongoose.Schema({
     guildId: String,
     rewards: [{ minutesRequired: Number, roleId: String, roleName: String }],
@@ -66,18 +66,23 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Hilfsfunktion zur Echtzeit-Sortierung
+// Hilfsfunktion zur Echtzeit-Sortierung (Nur All-Time)
 function getSortedUsers(users) {
     const now = new Date();
     return users.map(user => {
         const u = user.toObject();
-        u.effectiveMinutes = u.totalMinutes;
+        // Wir nutzen nur noch eine Zeitbasis: totalMinutes
+        u.effectiveTotal = u.totalMinutes;
+        
         if (u.isStreaming && u.lastStreamStart) {
             const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
-            if (diff > 0) u.effectiveMinutes += diff;
+            if (diff > 0) u.effectiveTotal += diff;
         }
+        
+        // Damit das HTML-Template nicht abstürzt, belegen wir "effectiveMonthly" mit dem Gesamtwert
+        u.effectiveMonthly = u.effectiveTotal; 
         return u;
-    }).sort((a, b) => b.effectiveMinutes - a.effectiveMinutes);
+    }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
 }
 
 // --- ROUTES ---
@@ -101,7 +106,13 @@ app.get('/leaderboard/:identifier', async (req, res) => {
     const users = await StreamUser.find({ guildId: guild.id });
     const trackedUsers = getSortedUsers(users);
 
-    res.render('leaderboard_public', { guild, trackedUsers });
+    // Wir übergeben trackedUsers für beides, damit beide Tabs im HTML die Gesamtzeit zeigen
+    res.render('leaderboard_public', { 
+        guild, 
+        allTimeLeaderboard: trackedUsers, 
+        monthlyLeaderboard: trackedUsers,
+        monthName: "Gesamt" 
+    });
 });
 
 app.get('/dashboard/:guildId', async (req, res) => {
@@ -124,6 +135,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers, roles, channels });
 });
 
+// POST Routes bleiben identisch...
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -162,11 +174,9 @@ app.post('/dashboard/:guildId/delete-user', async (req, res) => {
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
-app.get('/logout', (req, res) => {
-    req.logout(() => res.redirect('/'));
-});
+app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 
-// --- 4. TRACKING LOGIK ---
+// --- 4. TRACKING LOGIK (Nur All-Time) ---
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
@@ -182,11 +192,9 @@ async function handleStreamStart(userId, guildId, username, avatarURL) {
                 },
                 { upsert: true }
             );
-            console.log(`📡 [START] ${username} streamt jetzt.`);
+            console.log(`📡 [START] ${username}`);
         }
-    } catch (err) {
-        console.error("Fehler in handleStreamStart:", err);
-    }
+    } catch (err) { console.error("Fehler in handleStreamStart:", err); }
 }
 
 async function handleStreamStop(userId, guildId) {
@@ -217,21 +225,18 @@ async function handleStreamStop(userId, guildId) {
         userData.isStreaming = false;
         userData.lastStreamStart = null;
         await userData.save();
-    } catch (err) {
-        console.error("Fehler in handleStreamStop:", err);
-    }
+    } catch (err) { console.error("Fehler in handleStreamStop:", err); }
 }
 
+// Events bleiben gleich...
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const guildId = newState.guild.id;
         const channel = newState.channel;
-
         if (!channel || !newState.streaming) {
             await handleStreamStop(newState.id, guildId);
             return;
         }
-
         const config = await GuildConfig.findOne({ guildId });
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                            config.allowedChannels.includes(channel.id) || 
@@ -241,26 +246,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             await handleStreamStop(newState.id, guildId);
             return;
         }
-
         const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
-
         if (newState.streaming && viewerCount > 0) {
             const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
             await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
         } else {
             await handleStreamStop(newState.id, guildId);
         }
-
-    } catch (error) {
-        console.error("Fehler im voiceStateUpdate:", error);
-    }
+    } catch (error) { console.error(error); }
 });
 
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.guild) return;
     const isStreaming = newPresence.activities.some(a => a.type === 1);
     const wasStreaming = oldPresence?.activities.some(a => a.type === 1);
-
     if (isStreaming && !wasStreaming) {
         const avatarURL = newPresence.user.displayAvatarURL({ extension: 'png', size: 128 });
         await handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username, avatarURL);
@@ -271,69 +270,38 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-
     if (interaction.commandName === 'leaderboard') {
-        const serverSlug = interaction.guild.name
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, '')
-            .replace(/\s+/g, '-');
-
+        const serverSlug = interaction.guild.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
         const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${serverSlug}`;
-        
-        await interaction.reply({ 
-            content: `🏆 **Hier ist das aktuelle Stream-Ranking für ${interaction.guild.name}:**\n${lbLink}`, 
-            ephemeral: false 
-        });
+        await interaction.reply({ content: `🏆 **Ranking:** ${lbLink}`, ephemeral: false });
     }
 });
 
-// --- 5. AUTOMATISCHER ROLLEN-CHECK (Echtzeit-Vergabe) ---
+// Echtzeit Rollen-Check (Nur All-Time)
 setInterval(async () => {
     const now = new Date();
     const activeStreamers = await StreamUser.find({ isStreaming: true });
-
     for (const userData of activeStreamers) {
         if (!userData.lastStreamStart) continue;
-
         const currentStreamMinutes = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
         const totalEffectiveMinutes = userData.totalMinutes + currentStreamMinutes;
-
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards.length) continue;
-
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) continue;
-
         try {
             const member = await guild.members.fetch(userData.userId).catch(() => null);
             if (!member) continue;
-
             for (const reward of config.rewards) {
                 if (totalEffectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
                     await member.roles.add(reward.roleId).catch(() => {});
-                    console.log(`🏅 [LIVE-REWARD] ${userData.username} hat ${reward.roleName} erreicht!`);
                 }
             }
-        } catch (e) { console.error("Rollen-Check Fehler:", e); }
+        } catch (e) { }
     }
-}, 5 * 60000); // Check alle 5 Minuten
+}, 5 * 60000);
 
 // --- 6. START ---
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅ MongoDB verbunden'))
-    .catch(err => console.error('❌ MongoDB Fehler:', err));
-
+mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
-
-client.once('ready', async () => {
-    console.log(`✅ Bot online: ${client.user.tag}`);
-    const data = { name: 'leaderboard', description: 'Zeigt den Link zum Ranking an' };
-    try {
-        await client.application.commands.set([data]);
-        console.log('🚀 Slash-Command registriert!');
-    } catch (error) {
-        console.error('❌ Fehler:', error);
-    }
-});
-
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
