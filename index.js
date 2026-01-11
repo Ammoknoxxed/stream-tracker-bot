@@ -141,7 +141,7 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         const guild = client.guilds.cache.get(guildId);
         if (!guild) return res.status(404).send("Server nicht gefunden.");
         const users = await StreamUser.find({ guildId });
-        res.render('leaderboard_public', { guild, allTimeLeaderboard: getSortedUsers(users), monthName: "Gesamtstatistik" });
+        res.render('leaderboard_public', { guild, allTimeLeaderboard: getSortedUsers(users), monthName: "Gesamtstatistik", ranks });
     } catch (err) { res.status(500).send("Fehler."); }
 });
 
@@ -165,7 +165,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers: getSortedUsers(users), roles, channels });
 });
 
-// POST ACTIONS (Hier deine bestehenden Post-Routen einfügen wie adjust-time, save-channels etc.)
+// DASHBOARD ACTIONS
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const { userId, minutes } = req.body;
@@ -215,18 +215,43 @@ client.on('messageCreate', async (message) => {
 
     if (message.content.startsWith('!rank')) {
         if (message.channel.id !== allowedChannelId) return;
+        
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
         const stats = getSortedUsers(userData ? [userData] : [])[0] || { effectiveTotal: 0 };
         const totalMins = stats.effectiveTotal;
+
         const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
-        
+        const nextRankIndex = ranks.indexOf(currentRank) - 1;
+        const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
+
         const embed = new EmbedBuilder()
-            .setTitle(`🎰 Status: ${message.author.username}`)
+            .setAuthor({ name: `Juicer Status für ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
+            .setTitle(`🎰 ${currentRank.name}`)
             .setColor(currentRank.color)
+            .setThumbnail(message.author.displayAvatarURL())
             .addFields(
-                { name: 'Rang', value: `**${currentRank.name}**`, inline: true },
-                { name: 'Zeit', value: `${Math.floor(totalMins/60)}h ${totalMins%60}m`, inline: true }
+                { name: '⌛ Gesamtzeit', value: `\`${Math.floor(totalMins / 60)}h ${totalMins % 60}m\``, inline: true },
+                { name: '🏆 Aktueller Rang', value: `**${currentRank.name}**`, inline: true }
             );
+
+        if (nextRank) {
+            const needed = nextRank.min - totalMins;
+            const progress = Math.min(Math.floor((totalMins / nextRank.min) * 100), 100);
+            const progressBarLength = 10;
+            const filledBlocks = Math.round((progress / 100) * progressBarLength);
+            const emptyBlocks = progressBarLength - filledBlocks;
+            const bar = '🟩'.repeat(filledBlocks) + '⬛'.repeat(emptyBlocks);
+
+            embed.addFields(
+                { name: '\u200B', value: '\u200B' }, 
+                { name: `Nächstes Ziel: ${nextRank.name}`, value: `${bar} **${progress}%**` },
+                { name: 'Fehlende Zeit', value: `Noch \`${Math.floor(needed / 60)}h ${needed % 60}m\` bis zum nächsten Level-Up!` }
+            );
+        } else {
+            embed.addFields({ name: '🌟 Maximum erreicht', value: 'Du bist eine absolute Legende!' });
+        }
+
+        embed.setFooter({ text: 'Bleib dran! 🎰', iconURL: client.user.displayAvatarURL() }).setTimestamp();
         message.channel.send({ embeds: [embed] });
     }
 });
@@ -271,10 +296,8 @@ setInterval(async () => {
 
     for (const userData of allUsers) {
         try {
-            // 1. Rollen synchronisieren
             await syncUserRoles(userData, now);
 
-            // 2. Rang-Aufstieg Logik
             let totalMins = userData.totalMinutes;
             if (userData.isStreaming && userData.lastStreamStart) {
                 const diff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
@@ -287,16 +310,22 @@ setInterval(async () => {
                 const oldRankIndex = ranks.findIndex(r => r.name === userData.lastNotifiedRank);
                 const currentRankIndex = ranks.findIndex(r => r.name === currentRank.name);
 
-                // Wenn der neue Rang im Array weiter oben steht (kleinerer Index), ist es ein Aufstieg
                 if (oldRankIndex === -1 || currentRankIndex < oldRankIndex) {
                     const channel = await client.channels.fetch(statusChannelId).catch(() => null);
                     if (channel) {
                         const levelEmbed = new EmbedBuilder()
-                            .setTitle("🎉 RANG-AUFSTIEG!")
-                            .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
+                            .setAuthor({ name: 'LEVEL UP! 🎰' })
+                            .setTitle(`🎉 ${userData.username} ist aufgestiegen!`)
+                            .setDescription(`Wahnsinn! Du hast den Rang **${currentRank.name}** erreicht.`)
                             .setColor(currentRank.color)
                             .setThumbnail(userData.avatar || null)
-                            .setFooter({ text: `Gesamtzeit: ${Math.floor(totalMins / 60)}h ${totalMins % 60}m` });
+                            .addFields(
+                                { name: 'Vorher', value: userData.lastNotifiedRank || "Keiner", inline: true },
+                                { name: 'Jetzt', value: `**${currentRank.name}**`, inline: true },
+                                { name: 'Gesamtzeit', value: `\`${Math.floor(totalMins / 60)}h ${totalMins % 60}m\`` }
+                            )
+                            .setFooter({ text: 'Die Walzen stehen niemals still...' })
+                            .setTimestamp();
 
                         await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
                     }
