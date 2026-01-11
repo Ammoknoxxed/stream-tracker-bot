@@ -133,27 +133,16 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // --- WEB ROUTES ---
-
 app.get('/', (req, res) => res.render('index'));
 
-// FIX: LEADERBOARD ROUTE
 app.get('/leaderboard/:guildId', async (req, res) => {
     try {
         const guildId = req.params.guildId;
         const guild = client.guilds.cache.get(guildId);
-        if (!guild) return res.status(404).send("Server nicht gefunden. Bot auf dem Server?");
-        
+        if (!guild) return res.status(404).send("Server nicht gefunden.");
         const users = await StreamUser.find({ guildId });
-        const trackedUsers = getSortedUsers(users);
-        
-        res.render('leaderboard_public', { 
-            guild, 
-            allTimeLeaderboard: trackedUsers,
-            monthName: "Gesamtstatistik" 
-        });
-    } catch (err) {
-        res.status(500).send("Fehler beim Laden.");
-    }
+        res.render('leaderboard_public', { guild, allTimeLeaderboard: getSortedUsers(users), monthName: "Gesamtstatistik" });
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
 app.get('/login', passport.authenticate('discord'));
@@ -176,7 +165,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers: getSortedUsers(users), roles, channels });
 });
 
-// DASHBOARD ACTIONS
+// POST ACTIONS (Hier deine bestehenden Post-Routen einfügen wie adjust-time, save-channels etc.)
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const { userId, minutes } = req.body;
@@ -212,14 +201,7 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
-app.post('/dashboard/:guildId/delete-user', async (req, res) => {
-    if (!req.isAuthenticated()) return res.redirect('/');
-    await StreamUser.findOneAndDelete({ userId: req.body.userId, guildId: req.params.guildId });
-    res.redirect(`/dashboard/${req.params.guildId}`);
-});
-
 // --- DISCORD EVENTS ---
-
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
     const allowedChannelId = '1459882167848145073';
@@ -228,14 +210,14 @@ client.on('messageCreate', async (message) => {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("Admin only.");
         const allUsers = await StreamUser.find({ guildId: message.guild.id });
         for (const u of allUsers) await syncUserRoles(u);
-        return message.reply(`✅ Sync abgeschlossen für ${allUsers.length} User.`);
+        return message.reply(`✅ Sync abgeschlossen.`);
     }
 
     if (message.content.startsWith('!rank')) {
         if (message.channel.id !== allowedChannelId) return;
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
         const stats = getSortedUsers(userData ? [userData] : [])[0] || { effectiveTotal: 0 };
-        const totalMins = stats.effectiveTotal || 0;
+        const totalMins = stats.effectiveTotal;
         const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
         
         const embed = new EmbedBuilder()
@@ -249,8 +231,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// --- TRACKING ---
-
+// --- TRACKING LOGIK ---
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     await StreamUser.findOneAndUpdate(
         { userId, guildId },
@@ -282,15 +263,52 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+// --- AUTOMATISCHES INTERVALL (Alle 5 Minuten) ---
 setInterval(async () => {
+    const now = new Date();
     const allUsers = await StreamUser.find({});
-    for (const u of allUsers) {
-        await syncUserRoles(u);
-        // Level-Up Logik hier (gekürzt für Übersicht)
+    const statusChannelId = '1459882167848145073'; 
+
+    for (const userData of allUsers) {
+        try {
+            // 1. Rollen synchronisieren
+            await syncUserRoles(userData, now);
+
+            // 2. Rang-Aufstieg Logik
+            let totalMins = userData.totalMinutes;
+            if (userData.isStreaming && userData.lastStreamStart) {
+                const diff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+                if (diff > 0) totalMins += diff;
+            }
+
+            const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
+
+            if (userData.lastNotifiedRank !== currentRank.name) {
+                const oldRankIndex = ranks.findIndex(r => r.name === userData.lastNotifiedRank);
+                const currentRankIndex = ranks.findIndex(r => r.name === currentRank.name);
+
+                // Wenn der neue Rang im Array weiter oben steht (kleinerer Index), ist es ein Aufstieg
+                if (oldRankIndex === -1 || currentRankIndex < oldRankIndex) {
+                    const channel = await client.channels.fetch(statusChannelId).catch(() => null);
+                    if (channel) {
+                        const levelEmbed = new EmbedBuilder()
+                            .setTitle("🎉 RANG-AUFSTIEG!")
+                            .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
+                            .setColor(currentRank.color)
+                            .setThumbnail(userData.avatar || null)
+                            .setFooter({ text: `Gesamtzeit: ${Math.floor(totalMins / 60)}h ${totalMins % 60}m` });
+
+                        await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
+                    }
+                }
+                userData.lastNotifiedRank = currentRank.name;
+                await userData.save();
+            }
+        } catch (err) { console.error("Interval Error:", err); }
     }
 }, 5 * 60000);
 
-client.once('ready', () => console.log(`✅ ${client.user.tag} ist bereit!`));
-mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB bereit'));
+client.once('ready', () => console.log(`✅ ${client.user.tag} online!`));
+mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
