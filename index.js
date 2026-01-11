@@ -120,7 +120,7 @@ client.on('messageCreate', async (message) => {
         const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
 
         const embed = new EmbedBuilder()
-            .setTitle(`🎰 Casino Status: ${message.author.username}`)
+            .setTitle(`🎰 Juicer Status: ${message.author.username}`)
             .setColor(currentRank.color || '#fbbf24')
             .setThumbnail(message.author.displayAvatarURL())
             .addFields(
@@ -385,4 +385,5 @@ client.once('ready', async () => {
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
+
 
