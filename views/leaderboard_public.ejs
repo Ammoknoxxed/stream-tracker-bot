@@ -68,14 +68,14 @@
 <% 
 // Ränge Konfiguration
 const ranks = [
-    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" }, // 1000h
-    { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" }, // 750h
-    { min: 30000, name: "Jackpot Legende", color: "#f1c40f", img: "17.png" }, // 500h
+    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
+    { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
+    { min: 30000, name: "Jackpot Legende", color: "#f1c40f", img: "17.png" },
     { min: 20000, name: "Haus Elite", color: "#d35400", img: "16.png" },
     { min: 15000, name: "Zucker Baron", color: "#e91e63", img: "15.png" },
     { min: 10000, name: "High Roller", color: "#8e44ad", img: "14.png" },
     { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff", img: "13.png" },
-    { min: 5000,  name: "Multi König", color: "#1a5276", img: "12.png" }, // Hier wird es ab jetzt richtig schwer
+    { min: 5000,  name: "Multi König", color: "#1a5276", img: "12.png" },
     { min: 3500,  name: "Scatter Profi", color: "#2980b9", img: "11.png" },
     { min: 2500,  name: "Bonus Shopper", color: "#3498db", img: "10.png" },
     { min: 1800,  name: "Risiko Experte", color: "#145a32", img: "9.png" },
@@ -104,7 +104,6 @@ const formatFullTime = (totalMins) => {
     return hours > 0 ? `${hours} Std. ${mins} Min.` : `${mins} Min.`;
 };
 
-// Rendert das Leaderboard
 function renderLeaderboard(userList, timeKey) { %>
     <% if(userList.length >= 1) { %>
     <div class="top-three">
@@ -131,7 +130,7 @@ function renderLeaderboard(userList, timeKey) { %>
                     <%= info.current.name %>
                 </div>
                 <% if(user.isStreaming) { %><span class="badge mb-2" style="background-color: #ff0055;">LIVE</span><% } %>
-                <div class="text-accent fw-bold live-timer" data-base="<%= user[timeKey] %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
+                <div class="text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
                     <%= formatFullTime(user[timeKey]) %>
                 </div>
                 <div class="small opacity-50 mt-1">Platz <%= index + 1 %></div>
@@ -180,7 +179,7 @@ function renderLeaderboard(userList, timeKey) { %>
                             </div>
                         </div>
                     </td>
-                    <td class="text-end pe-4 text-accent fw-bold live-timer" data-base="<%= user[timeKey] %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
+                    <td class="text-end pe-4 text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
                         <%= formatFullTime(user[timeKey]) %>
                     </td>
                 </tr>
@@ -228,6 +227,7 @@ function renderLeaderboard(userList, timeKey) { %>
         const m = Math.floor(totalMins % 60);
         return h > 0 ? h + " Std. " + m + " Min." : m + " Min.";
     }
+    
     function updateLive() {
         const now = new Date();
         document.querySelectorAll('.live-timer').forEach(el => {
@@ -235,11 +235,20 @@ function renderLeaderboard(userList, timeKey) { %>
             const base = parseInt(el.getAttribute('data-base'));
             if(startStr && startStr !== 'null') {
                 const diff = Math.floor((now - new Date(startStr)) / 60000);
-                if(diff >= 0) el.innerText = formatTimeJS(base + diff);
+                if(diff >= 0) {
+                    el.innerText = formatTimeJS(base + diff);
+                }
             }
         });
     }
+
+    // Sofort beim Laden einmal ausführen
+    updateLive();
+    
+    // Alle 10 Sekunden aktualisieren
     setInterval(updateLive, 10000);
+    
+    // Alle 5 Minuten Seite neu laden für frische DB-Daten
     setTimeout(() => { window.location.reload(); }, 300000);
 </script>
 </body>
