@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require('discord.js'); // EmbedBuilder hinzugefügt
 const express = require('express');
 const passport = require('passport');
 const { Strategy } = require('passport-discord');
@@ -6,6 +6,29 @@ const session = require('express-session');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
+
+// --- 0. RANG KONFIGURATION (Hardcore Werte) ---
+const ranks = [
+    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
+    { min: 45000, name: "Casino Imperator", color: "#ff4500" },
+    { min: 30000, name: "Jackpot Legende", color: "#f1c40f" },
+    { min: 21000, name: "Haus Elite", color: "#d35400" },
+    { min: 15000, name: "Zucker Baron", color: "#e91e63" },
+    { min: 10500, name: "High Roller", color: "#8e44ad" },
+    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff" },
+    { min: 5000,  name: "Multi König", color: "#1a5276" },
+    { min: 3500,  name: "Scatter Profi", color: "#2980b9" },
+    { min: 2500,  name: "Bonus Shopper", color: "#3498db" },
+    { min: 1800,  name: "Risiko Experte", color: "#145a32" },
+    { min: 1200,  name: "Big Gambler", color: "#1f8b4c" },
+    { min: 800,   name: "Rejuicer", color: "#1db954" },
+    { min: 500,   name: "Bonus Magnet", color: "#2ecc71" },
+    { min: 300,   name: "Stammgast", color: "#e5e4e2" },
+    { min: 150,   name: "Dauerdreher", color: "#dcddde" },
+    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d" },
+    { min: 20,    name: "Glücksjäger", color: "#bdc3c7" },
+    { min: 0,     name: "Casino Gast", color: "#95a5a6" }
+];
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -33,7 +56,8 @@ const client = new Client({
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessages
     ],
     partials: [Partials.GuildMember, Partials.User, Partials.Presence]
 });
@@ -66,6 +90,68 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// --- STATUS CHECK COMMAND ---
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.content.startsWith('!rank')) return;
+
+    // HIER DEINE KANAL-ID EINTRAGEN
+    const allowedChannelId = 'DEINE_STATUS_CHECK_CHANNEL_ID'; 
+
+    if (message.channel.id !== allowedChannelId) {
+        const msg = await message.reply(`Bitte nutze den Befehl nur im <#${allowedChannelId}> Kanal.`);
+        setTimeout(() => {
+            msg.delete().catch(() => {});
+            message.delete().catch(() => {});
+        }, 5000);
+        return;
+    }
+
+    try {
+        const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
+        let totalMins = userData ? userData.totalMinutes : 0;
+
+        if (userData?.isStreaming && userData.lastStreamStart) {
+            const diff = Math.floor((new Date() - new Date(userData.lastStreamStart)) / 60000);
+            if (diff > 0) totalMins += diff;
+        }
+
+        const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
+        const nextRankIndex = ranks.indexOf(currentRank) - 1;
+        const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🎰 Casino Status: ${message.author.username}`)
+            .setColor(currentRank.color || '#fbbf24')
+            .setThumbnail(message.author.displayAvatarURL())
+            .addFields(
+                { name: 'Aktueller Rang', value: `**${currentRank.name}**`, inline: true },
+                { name: 'Gesamtzeit', value: `${Math.floor(totalMins / 60)} Std. ${totalMins % 60} Min.`, inline: true }
+            );
+
+        if (nextRank) {
+            const needed = nextRank.min - totalMins;
+            embed.addFields({ 
+                name: 'Nächstes Ziel', 
+                value: `**${nextRank.name}**\nNoch **${Math.floor(needed / 60)} Std. ${needed % 60} Min.** nötig.` 
+            });
+            
+            // Kleiner Fortschrittsbalken
+            const percent = Math.min(Math.floor((totalMins / nextRank.min) * 100), 100);
+            embed.setFooter({ text: `Fortschritt: ${percent}% zum nächsten Rang` });
+        } else {
+            embed.addFields({ name: 'Status', value: '🏆 Du hast den maximalen Rang erreicht!' });
+        }
+
+        message.reply({ embeds: [embed] });
+
+    } catch (err) {
+        console.error(err);
+        message.reply("Fehler beim Abrufen der Daten.");
+    }
+});
+
+// --- RESTLICHE FUNKTIONEN (getSortedUsers, handleStream etc.) ---
+
 function getSortedUsers(users) {
     const now = new Date();
     return users.map(user => {
@@ -80,7 +166,7 @@ function getSortedUsers(users) {
     }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
 }
 
-// --- ROUTES (Dashboard & Leaderboard) ---
+// --- ROUTES ---
 app.get('/', (req, res) => res.render('index'));
 app.get('/login', passport.authenticate('discord'));
 app.get('/auth/discord/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => res.redirect('/dashboard'));
@@ -168,7 +254,7 @@ app.post('/dashboard/:guildId/delete-user', async (req, res) => {
 
 app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 
-// --- 4. TRACKING LOGIK ---
+// --- TRACKING LOGIK ---
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
@@ -205,21 +291,15 @@ async function handleStreamStop(userId, guildId) {
     } catch (err) { console.error("Fehler in handleStreamStop:", err); }
 }
 
-// --- 5. INITIALER SCAN (Beim Start) ---
 async function scanActiveStreams() {
-    console.log("🔍 Scanne laufende Streams in allen Voice-Channels...");
+    console.log("🔍 Scanne laufende Streams...");
     for (const [guildId, guild] of client.guilds.cache) {
         const config = await GuildConfig.findOne({ guildId });
-        
         for (const [memberId, member] of guild.members.cache) {
             if (member.user.bot) continue;
-            
             const voiceState = member.voice;
             const channel = voiceState.channel;
-
-            // Check ob User streamt
             if (channel && voiceState.streaming) {
-                // Check ob Channel erlaubt ist
                 const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                                    config.allowedChannels.includes(channel.id) || 
                                    (channel.parentId && config.allowedChannels.includes(channel.parentId));
@@ -233,21 +313,16 @@ async function scanActiveStreams() {
             }
         }
     }
-    console.log("✅ Scan abgeschlossen.");
 }
 
-// --- 6. EVENTS ---
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const guildId = newState.guild.id;
         const channel = newState.channel;
-        
-        // Wenn nicht mehr im Channel oder kein Stream mehr
         if (!channel || !newState.streaming) {
             await handleStreamStop(newState.id, guildId);
             return;
         }
-
         const config = await GuildConfig.findOne({ guildId });
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                            config.allowedChannels.includes(channel.id) || 
@@ -257,7 +332,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             await handleStreamStop(newState.id, guildId);
             return;
         }
-
         const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
         if (viewerCount > 0) {
             await handleStreamStart(newState.id, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
@@ -278,45 +352,34 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     }
 });
 
-// --- 7. AUTOMATISCHER ROLLEN-CHECK (Echtzeit-Intervall) ---
 setInterval(async () => {
     const now = new Date();
-    // Wir holen alle User, die aktuell streamen ODER bereits Punkte haben
     const allUsers = await StreamUser.find({});
-    
     for (const userData of allUsers) {
         let effectiveMinutes = userData.totalMinutes;
-        
-        // Wenn der User gerade live ist, rechnen wir die aktuelle Session temporär dazu
         if (userData.isStreaming && userData.lastStreamStart) {
             const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
             if (currentDiff > 0) effectiveMinutes += currentDiff;
         }
-
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards || config.rewards.length === 0) continue;
-
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) continue;
-
         try {
             const member = await guild.members.fetch(userData.userId).catch(() => null);
             if (!member) continue;
-
             for (const reward of config.rewards) {
                 if (effectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
                     await member.roles.add(reward.roleId).catch(() => {});
-                    console.log(`🏅 [REWARD] ${userData.username} -> ${reward.roleName} verliehen.`);
                 }
             }
-        } catch (e) { console.error("Fehler beim Rollen-Verteilen:", e); }
+        } catch (e) { console.error(e); }
     }
-}, 5 * 60000); // 5 Minuten Intervall
+}, 5 * 60000);
 
-// --- 8. START ---
 client.once('ready', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
-    await scanActiveStreams(); // Scanner beim Start ausführen
+    await scanActiveStreams();
 });
 
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
