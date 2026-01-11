@@ -95,7 +95,7 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith('!rank')) return;
 
     // HIER DEINE KANAL-ID EINTRAGEN
-    const allowedChannelId = 'DEINE_STATUS_CHECK_CHANNEL_ID'; 
+    const allowedChannelId = '1459882167848145073'; 
 
     if (message.channel.id !== allowedChannelId) {
         const msg = await message.reply(`Bitte nutze den Befehl nur im <#${allowedChannelId}> Kanal.`);
@@ -385,3 +385,4 @@ client.once('ready', async () => {
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
+
