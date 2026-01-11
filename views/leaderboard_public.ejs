@@ -10,7 +10,7 @@
     <style>
         :root { 
             --accent: #fbbf24; 
-            --bg-card: rgba(10, 10, 15, 0.8); /* Etwas dunkler für mehr Kontrast */
+            --bg-card: rgba(10, 10, 15, 0.8);
         }
 
         body {
@@ -34,7 +34,6 @@
             border-radius: 20px;
         }
 
-        /* FIX: Namen deutlich heller und lesbarer machen */
         .username-bright {
             color: #ffffff !important;
             font-weight: 700;
@@ -68,20 +67,47 @@
         @keyframes pulse-border { 0%, 100% { box-shadow: 0 0 5px rgba(255, 0, 85, 0.5); } 50% { box-shadow: 0 0 20px rgba(255, 0, 85, 0.9); } }
         
         .rank-icon-list { width: 35px; height: 35px; margin-right: 10px; object-fit: contain; }
-        .rank-icon-roadmap { width: 80px; height: 80px; margin-bottom: 10px; object-fit: contain; transition: 0.3s; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
+
+        /* NEU: Effekt für die Roadmap unten */
+        .rank-card { 
+            background: rgba(255, 255, 255, 0.03); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            border-radius: 12px; 
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            cursor: default;
+        }
+
+        .rank-icon-roadmap { 
+            width: 80px; 
+            height: 80px; 
+            margin-bottom: 10px; 
+            object-fit: contain; 
+            transition: all 0.4s ease; 
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); 
+        }
+
+        .rank-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-8px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+        }
+
+        .rank-card:hover .rank-icon-roadmap {
+            transform: scale(1.2) rotate(5deg);
+            filter: drop-shadow(0 0 12px var(--hover-color, #fff));
+        }
         
         .progress-custom { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 5px; }
-        .rank-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; transition: 0.3s; }
         .table { --bs-table-bg: transparent; color: white !important; }
         .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; border-bottom: 2px solid rgba(251, 191, 36, 0.2); }
         .text-accent { color: var(--accent) !important; }
-        .opacity-50 { opacity: 0.7 !important; } /* Etwas sichtbarer machen */
+        .opacity-50 { opacity: 0.7 !important; }
     </style>
 </head>
 <body>
 
 <% 
-// Ränge Konfiguration (unverändert)
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
@@ -224,7 +250,7 @@ function renderLeaderboard(userList, timeKey) { %>
         <div class="row g-4 justify-content-center">
             <% [...ranks].reverse().forEach(r => { %>
                 <div class="col-6 col-md-3 col-lg-2">
-                    <div class="rank-card p-3 h-100 d-flex flex-column align-items-center">
+                    <div class="rank-card p-3 h-100 d-flex flex-column align-items-center" style="--hover-color: <%= r.color %>;">
                         <img src="/images/ranks/<%= r.img %>" class="rank-icon-roadmap">
                         <div class="rank-name-bright" style="color: <%= r.color %>; font-size: 0.75rem; line-height: 1.2;"><%= r.name %></div>
                         <div class="mt-1 small opacity-50" style="font-size: 0.65rem;"><%= formatFullTime(r.min) %></div>
