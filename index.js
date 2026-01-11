@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
-// --- 0. RANG KONFIGURATION (Visuelle Ränge im Embed) ---
+// --- 0. RANG KONFIGURATION ---
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500" },
@@ -171,10 +171,8 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         const guildId = req.params.guildId;
         const guild = client.guilds.cache.get(guildId);
         if (!guild) return res.status(404).send("Server nicht gefunden.");
-
         const users = await StreamUser.find({ guildId });
         const trackedUsers = getSortedUsers(users);
-
         res.render('leaderboard_public', { 
             guild, 
             allTimeLeaderboard: trackedUsers,
@@ -222,10 +220,11 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
 
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
-    const guild = client.guilds.cache.get(req.params.guildId);
+    const guildId = req.params.guildId;
+    const guild = client.guilds.cache.get(guildId);
     const role = guild.roles.cache.get(roleId);
-    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } });
-    res.redirect(`/dashboard/${req.params.guildId}`);
+    await GuildConfig.findOneAndUpdate({ guildId }, { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } });
+    res.redirect(`/dashboard/${guildId}`);
 });
 
 app.post('/dashboard/:guildId/save-channels', async (req, res) => {
@@ -306,7 +305,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     } else { await handleStreamStop(newState.id, guildId); }
 });
 
-// INTERVALL: Rollenvergabe (JETZT MIT AUTOMATISCHEM ENTFERNEN) & Level-Up News
+// INTERVALL: Rollen & News (ALLE USER)
 setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
@@ -321,50 +320,52 @@ setInterval(async () => {
 
         const currentRank = ranks.find(r => effectiveMinutes >= r.min) || ranks[ranks.length - 1];
 
-        // --- LEVEL UP NEWS ---
+        // 1. LEVEL UP NEWS
         if (userData.lastNotifiedRank !== currentRank.name) {
-            const channel = client.channels.cache.get(statusChannelId);
-            if (channel) {
-                const levelEmbed = new EmbedBuilder()
-                    .setTitle("🎉 RANG-AUFSTIEG!")
-                    .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
-                    .setColor(currentRank.color)
-                    .setThumbnail(userData.avatar);
-                channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] });
+            const oldRank = ranks.find(r => r.name === userData.lastNotifiedRank);
+            if (!oldRank || currentRank.min > oldRank.min) {
+                const channel = client.channels.cache.get(statusChannelId);
+                if (channel) {
+                    const levelEmbed = new EmbedBuilder()
+                        .setTitle("🎉 RANG-AUFSTIEG!")
+                        .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
+                        .setColor(currentRank.color)
+                        .setThumbnail(userData.avatar);
+                    channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] });
+                }
             }
             userData.lastNotifiedRank = currentRank.name;
             await userData.save();
         }
 
-        // --- AUTOMATISCHE ROLLENVERGABE (ENTFERNT ALTE ROLLEN) ---
+        // 2. AUTOMATISCHE ROLLEN-SYNCHRONISATION
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (config && config.rewards && config.rewards.length > 0) {
             const guild = client.guilds.cache.get(userData.guildId);
             if (guild) {
                 const member = await guild.members.fetch(userData.userId).catch(() => null);
-                if (member) {
-                    // 1. Welche Belohnungen hat der User zeitlich erreicht?
+                
+                // SICHERHEITSABFRAGE: Nur eingreifen, wenn der User wirklich Zeit im System gesammelt hat
+                if (member && userData.totalMinutes > 0) {
                     const earnedRewards = config.rewards
                         .filter(r => effectiveMinutes >= r.minutesRequired)
                         .sort((a, b) => b.minutesRequired - a.minutesRequired);
 
-                    const topReward = earnedRewards[0]; // Das ist die höchste verdiente Rolle
+                    const topReward = earnedRewards[0]; 
+                    const allConfiguredRoleIds = config.rewards.map(r => r.roleId);
 
                     if (topReward) {
-                        // 2. Entferne alle ANDEREN Belohnungs-Rollen aus dem Dashboard beim User
-                        const otherRewardRoleIds = config.rewards
-                            .filter(r => r.roleId !== topReward.roleId)
-                            .map(r => r.roleId);
-
-                        for (const roleId of otherRewardRoleIds) {
-                            if (member.roles.cache.has(roleId)) {
-                                await member.roles.remove(roleId).catch(() => {});
+                        for (const roleId of allConfiguredRoleIds) {
+                            if (roleId === topReward.roleId) {
+                                if (!member.roles.cache.has(roleId)) await member.roles.add(roleId).catch(() => {});
+                            } else {
+                                if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(() => {});
                             }
                         }
-
-                        // 3. Füge die höchste Rolle hinzu, falls er sie noch nicht hat
-                        if (!member.roles.cache.has(topReward.roleId)) {
-                            await member.roles.add(topReward.roleId).catch(() => {});
+                    } else {
+                        // User hat 1+ Minute, aber qualifiziert sich für keine Belohnung -> Rollen weg
+                        for (const roleId of allConfiguredRoleIds) {
+                            if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(() => {});
                         }
                     }
                 }
