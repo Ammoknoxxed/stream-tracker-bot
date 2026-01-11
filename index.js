@@ -76,7 +76,7 @@ async function getProcessedLeaderboards(guildId) {
     const currentMonth = now.getMonth();
 
     const processed = await Promise.all(users.map(async (user) => {
-        // MONATS-RESET LOGIK
+        // ZUSÄTZLICHER SICHERHEITS-CHECK: MONATS-RESET LOGIK (Lazy Reset beim Laden)
         if (user.lastUpdateMonth !== currentMonth) {
             user.monthlyMinutes = 0;
             user.lastUpdateMonth = currentMonth;
@@ -153,6 +153,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers: boards.allTime, roles, channels });
 });
 
+// (Dashboard POST Routen bleiben gleich...)
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -215,6 +216,7 @@ async function handleStreamStop(userId, guildId) {
         const minutes = Math.round((now - userData.lastStreamStart) / 60000);
         
         if (minutes >= 1) {
+            // MONATS-RESET CHECK (Falls CronJob noch nicht lief)
             if (userData.lastUpdateMonth !== now.getMonth()) {
                 userData.monthlyMinutes = 0;
                 userData.lastUpdateMonth = now.getMonth();
@@ -241,6 +243,7 @@ async function handleStreamStop(userId, guildId) {
     } catch (err) { console.error(err); }
 }
 
+// Event-Listener (voiceStateUpdate, presenceUpdate, setInterval...)
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
     const channel = newState.channel;
@@ -288,6 +291,23 @@ setInterval(async () => {
     }
 }, 5 * 60000);
 
+// --- MONATS-RESET AUTOMATIK (Hard Reset am 1. des Monats) ---
+setInterval(async () => {
+    const now = new Date();
+    // Wenn heute der 1. Tag des Monats ist...
+    if (now.getDate() === 1) {
+        const currentMonth = now.getMonth();
+        // Alle User resetten, die noch den alten Monat im lastUpdateMonth stehen haben
+        const result = await StreamUser.updateMany(
+            { lastUpdateMonth: { $ne: currentMonth } },
+            { $set: { monthlyMinutes: 0, lastUpdateMonth: currentMonth } }
+        );
+        if (result.modifiedCount > 0) {
+            console.log(`📅 Monats-Reset durchgeführt: ${result.modifiedCount} User zurückgesetzt.`);
+        }
+    }
+}, 12 * 60 * 60 * 1000); // Prüft alle 12 Stunden
+
 // --- START ---
 mongoose.connect(process.env.MONGO_URI).then(() => {
     console.log('✅ MongoDB verbunden');
@@ -297,18 +317,6 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
 client.once('ready', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
     await client.application.commands.set([{ name: 'leaderboard', description: 'Link zum Ranking' }]);
-    
-    // Initial Scan
-    client.guilds.cache.forEach(async guild => {
-        guild.channels.cache.filter(c => c.isVoiceBased()).forEach(channel => {
-            channel.members.filter(m => m.voice.streaming && !m.user.bot).forEach(async member => {
-                const config = await GuildConfig.findOne({ guildId: guild.id });
-                if (!config || !config.allowedChannels?.length || config.allowedChannels.includes(channel.id)) {
-                    await handleStreamStart(member.id, guild.id, member.user.username, member.user.displayAvatarURL());
-                }
-            });
-        });
-    });
 });
 
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
