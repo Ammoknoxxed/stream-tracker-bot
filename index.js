@@ -77,11 +77,11 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
+// --- OPTIMIERTES LEADERBOARD MIT ECHTZEIT-SORTIERUNG ---
 app.get('/leaderboard/:identifier', async (req, res) => {
     const identifier = req.params.identifier;
     let guild;
 
-    // 1. Suche den Server (zuerst per ID, dann per Name)
     guild = client.guilds.cache.get(identifier) || 
             client.guilds.cache.find(g => g.name.toLowerCase().replace(/\s+/g, '-') === identifier.toLowerCase());
 
@@ -89,9 +89,22 @@ app.get('/leaderboard/:identifier', async (req, res) => {
         return res.status(404).send("Leaderboard nicht gefunden. Tipp: Der Bot muss auf dem Server sein.");
     }
 
-    const trackedUsers = await StreamUser.find({ guildId: guild.id }).sort({ totalMinutes: -1 });
-    
-    // Die Seite rendern
+    // Alle User laden
+    let users = await StreamUser.find({ guildId: guild.id });
+
+    // Echtzeit-Minuten für die Sortierung berechnen
+    const now = new Date();
+    const trackedUsers = users.map(user => {
+        const u = user.toObject();
+        u.effectiveMinutes = u.totalMinutes;
+        
+        if (u.isStreaming && u.lastStreamStart) {
+            const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
+            if (diff > 0) u.effectiveMinutes += diff;
+        }
+        return u;
+    }).sort((a, b) => b.effectiveMinutes - a.effectiveMinutes); // Sortiere nach berechneter Zeit
+
     res.render('leaderboard_public', { guild, trackedUsers });
 });
 
@@ -104,6 +117,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     let config = await GuildConfig.findOne({ guildId });
     if (!config) config = await GuildConfig.create({ guildId, rewards: [], allowedChannels: [] });
 
+    // Auch im Dashboard nach Zeit sortieren
     const trackedUsers = await StreamUser.find({ guildId }).sort({ totalMinutes: -1 });
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
     const channels = guild.channels.cache
@@ -159,8 +173,6 @@ app.get('/logout', (req, res) => {
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
-        // Wir setzen lastStreamStart NUR, wenn der User nicht schon als streamend markiert ist
-        // Damit der Timer bei kleinen Schwankungen nicht resettet wird.
         const user = await StreamUser.findOne({ userId, guildId });
         if (!user || !user.isStreaming) {
             await StreamUser.findOneAndUpdate(
@@ -187,7 +199,6 @@ async function handleStreamStop(userId, guildId) {
 
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
         
-        // Erst berechnen, dann Status zurücksetzen
         if (minutes >= 1) {
             userData.totalMinutes += minutes;
             console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min.`);
@@ -214,19 +225,16 @@ async function handleStreamStop(userId, guildId) {
     }
 }
 
-// Event: Go Live / Voice Streaming
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const guildId = newState.guild.id;
         const channel = newState.channel;
 
-        // Wenn der User den Kanal verlässt oder den Stream stoppt -> STOPP
         if (!channel || !newState.streaming) {
             await handleStreamStop(newState.id, guildId);
             return;
         }
 
-        // Prüfung der erlaubten Kanäle
         const config = await GuildConfig.findOne({ guildId });
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                            config.allowedChannels.includes(channel.id) || 
@@ -237,7 +245,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             return;
         }
 
-        // ZUSCHAUER-PRÜFUNG:
         const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
 
         if (newState.streaming && viewerCount > 0) {
@@ -252,7 +259,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// Event: Twitch/YouTube Status
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.guild) return;
     const isStreaming = newPresence.activities.some(a => a.type === 1);
@@ -270,11 +276,10 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === 'leaderboard') {
-        // Erstellt einen "Slug" aus dem Servernamen: "Mein Server" -> "mein-server"
         const serverSlug = interaction.guild.name
             .toLowerCase()
-            .replace(/[^\w\s-]/g, '') // Entfernt Sonderzeichen
-            .replace(/\s+/g, '-');    // Ersetzt Leerzeichen durch Bindestriche
+            .replace(/[^\w\s-]/g, '')
+            .replace(/\s+/g, '-');
 
         const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${serverSlug}`;
         
@@ -291,7 +296,9 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => console.error('❌ MongoDB Fehler:', err));
 
 client.login(process.env.TOKEN);
-client.once('ready', async () => {
+
+// Umbenannt von 'ready' zu 'clientReady' wegen DeprecationWarning
+client.once('clientReady', async () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
     const data = { name: 'leaderboard', description: 'Zeigt den Link zum Ranking an' };
     try {
@@ -303,4 +310,3 @@ client.once('ready', async () => {
 });
 
 app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
-
