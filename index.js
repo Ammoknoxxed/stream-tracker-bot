@@ -1,3 +1,4 @@
+
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const express = require('express');
 const passport = require('passport');
