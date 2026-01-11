@@ -9,25 +9,25 @@ require('dotenv').config();
 
 // --- 0. RANG KONFIGURATION (Hardcore Werte) ---
 const ranks = [
-    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
-    { min: 45000, name: "Casino Imperator", color: "#ff4500" },
-    { min: 30000, name: "Jackpot Legende", color: "#f1c40f" },
-    { min: 21000, name: "Haus Elite", color: "#d35400" },
-    { min: 15000, name: "Zucker Baron", color: "#e91e63" },
-    { min: 10500, name: "High Roller", color: "#8e44ad" },
-    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff" },
-    { min: 5000,  name: "Multi König", color: "#1a5276" },
-    { min: 3500,  name: "Scatter Profi", color: "#2980b9" },
-    { min: 2500,  name: "Bonus Shopper", color: "#3498db" },
-    { min: 1800,  name: "Risiko Experte", color: "#145a32" },
-    { min: 1200,  name: "Big Gambler", color: "#1f8b4c" },
-    { min: 800,   name: "Rejuicer", color: "#1db954" },
-    { min: 500,   name: "Bonus Magnet", color: "#2ecc71" },
-    { min: 300,   name: "Stammgast", color: "#e5e4e2" },
-    { min: 150,   name: "Dauerdreher", color: "#dcddde" },
-    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d" },
-    { min: 20,    name: "Glücksjäger", color: "#bdc3c7" },
-    { min: 0,     name: "Casino Gast", color: "#95a5a6" }
+    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },   // 1000 Std.
+    { min: 45000, name: "Casino Imperator", color: "#ff4500" }, // 750 Std.
+    { min: 30000, name: "Jackpot Legende", color: "#f1c40f" },  // 500 Std.
+    { min: 20000, name: "Haus Elite", color: "#d35400" },       // 333 Std. 20 Min.
+    { min: 15000, name: "Zucker Baron", color: "#e91e63" },     // 250 Std.
+    { min: 10000, name: "High Roller", color: "#8e44ad" },      // 166 Std. 40 Min.
+    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff" },   // 125 Std.
+    { min: 5000,  name: "Multi König", color: "#1a5276" },      // 83 Std. 20 Min.
+    { min: 3500,  name: "Scatter Profi", color: "#2980b9" },    // 58 Std. 20 Min.
+    { min: 2500,  name: "Bonus Shopper", color: "#3498db" },    // 41 Std. 40 Min.
+    { min: 1800,  name: "Risiko Experte", color: "#145a32" },   // 30 Std.
+    { min: 1200,  name: "Big Gambler", color: "#1f8b4c" },      // 20 Std.
+    { min: 800,   name: "Rejuicer", color: "#1db954" },         // 13 Std. 20 Min.
+    { min: 500,   name: "Bonus Magnet", color: "#2ecc71" },     // 8 Std. 20 Min.
+    { min: 300,   name: "Stammgast", color: "#e5e4e2" },        // 5 Std.
+    { min: 150,   name: "Dauerdreher", color: "#dcddde" },      // 2 Std. 30 Min.
+    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d" }, // 1 Std.
+    { min: 20,    name: "Glücksjäger", color: "#bdc3c7" },      // 20 Min.
+    { min: 0,     name: "Casino Gast", color: "#95a5a6" }       // 0 Min.
 ];
 
 // --- 1. DATENBANK MODELLE ---
@@ -385,5 +385,6 @@ client.once('ready', async () => {
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
+
 
 
