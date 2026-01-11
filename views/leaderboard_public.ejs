@@ -10,7 +10,7 @@
     <style>
         :root { 
             --accent: #fbbf24; 
-            --bg-card: rgba(10, 10, 15, 0.7); 
+            --bg-card: rgba(10, 10, 15, 0.8); /* Etwas dunkler für mehr Kontrast */
         }
 
         body {
@@ -34,7 +34,13 @@
             border-radius: 20px;
         }
 
-        /* NEU: Klasse für bessere Lesbarkeit dunkler Rangfarben */
+        /* FIX: Namen deutlich heller und lesbarer machen */
+        .username-bright {
+            color: #ffffff !important;
+            font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+
         .rank-name-bright {
             font-weight: 800;
             text-transform: uppercase;
@@ -67,14 +73,15 @@
         .progress-custom { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 5px; }
         .rank-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; transition: 0.3s; }
         .table { --bs-table-bg: transparent; color: white !important; }
-        .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
+        .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; border-bottom: 2px solid rgba(251, 191, 36, 0.2); }
         .text-accent { color: var(--accent) !important; }
+        .opacity-50 { opacity: 0.7 !important; } /* Etwas sichtbarer machen */
     </style>
 </head>
 <body>
 
 <% 
-// Ränge Konfiguration
+// Ränge Konfiguration (unverändert)
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
@@ -133,7 +140,7 @@ function renderLeaderboard(userList, timeKey) { %>
                     <img src="/images/ranks/<%= info.current.img %>" class="rank-badge-podium">
                 </div>
 
-                <h4 class="mb-1 text-truncate"><%= user.username %></h4>
+                <h4 class="mb-1 text-truncate username-bright"><%= user.username %></h4>
                 <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;">
                     <%= info.current.name %>
                 </div>
@@ -168,7 +175,7 @@ function renderLeaderboard(userList, timeKey) { %>
                              class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
                         <div class="flex-grow-1" style="max-width: 280px;">
                             <div class="d-flex align-items-center">
-                                <span class="fw-bold me-2"><%= user.username %></span>
+                                <span class="username-bright me-2"><%= user.username %></span>
                                 <% if(user.isStreaming) { %><span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span><% } %>
                             </div>
                             <div class="d-flex align-items-center mt-1">
