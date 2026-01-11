@@ -19,7 +19,7 @@
             background-position: center;
             background-size: cover;
             background-repeat: no-repeat;
-            color: var(--accent) !important; /* Alle Texte standardmäßig gelb */
+            color: white;
             min-height: 100vh;
             margin: 0;
         }
@@ -35,7 +35,7 @@
         }
 
         .username-bright {
-            color: #ffffff !important; /* Namen bleiben weiß */
+            color: #ffffff !important;
             font-weight: 700;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
         }
@@ -68,35 +68,7 @@
         
         .rank-icon-list { width: 35px; height: 35px; margin-right: 10px; object-fit: contain; }
 
-        /* Ladebalken & Scroll-Area */
-        .leaderboard-scroll-area {
-            max-height: 650px; /* Begrenzung für lange Listen */
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--accent) transparent;
-        }
-        .leaderboard-scroll-area::-webkit-scrollbar { width: 6px; }
-        .leaderboard-scroll-area::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
-
-        .progress-custom { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 5px; }
-        .progress-bar-animated {
-            height: 100%;
-            border-radius: 10px;
-            background-image: linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent);
-            background-size: 1rem 1rem;
-            animation: progress-bar-stripes 1s linear infinite;
-        }
-        @keyframes progress-bar-stripes {
-            from { background-position: 1rem 0; }
-            to { background-position: 0 0; }
-        }
-
-        .table { --bs-table-bg: transparent; color: var(--accent) !important; }
-        .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; border-bottom: 2px solid rgba(251, 191, 36, 0.2); }
-        .text-accent { color: var(--accent) !important; }
-        .opacity-50 { opacity: 0.7 !important; color: white !important; } /* Plätze #4 etc. in weiß-transparent */
-
-        /* Roadmap */
+        /* NEU: Effekt für die Roadmap unten */
         .rank-card { 
             background: rgba(255, 255, 255, 0.03); 
             border: 1px solid rgba(255, 255, 255, 0.05); 
@@ -104,20 +76,60 @@
             transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
             cursor: default;
         }
+
         .rank-icon-roadmap { 
-            width: 80px; height: 80px; margin-bottom: 10px; object-fit: contain; 
-            transition: all 0.4s ease; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); 
+            width: 80px; 
+            height: 80px; 
+            margin-bottom: 10px; 
+            object-fit: contain; 
+            transition: all 0.4s ease; 
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); 
         }
+
         .rank-card:hover {
-            background: rgba(255, 255, 255, 0.08); transform: translateY(-8px);
-            border-color: rgba(255, 255, 255, 0.2); box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-8px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
         }
+
+        .rank-card:hover .rank-icon-roadmap {
+            transform: scale(1.2) rotate(5deg);
+            filter: drop-shadow(0 0 12px var(--hover-color, #fff));
+        }
+        
+        .progress-custom { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 5px; }
+        .table { --bs-table-bg: transparent; color: white !important; }
+        .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; border-bottom: 2px solid rgba(251, 191, 36, 0.2); }
+        .text-accent { color: var(--accent) !important; }
+        .opacity-50 { opacity: 0.7 !important; }
     </style>
 </head>
 <body>
 
 <% 
-// Logik-Funktionen (bleiben identisch)
+const ranks = [
+    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
+    { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
+    { min: 30000, name: "Jackpot Legende", color: "#f1c40f", img: "17.png" },
+    { min: 20000, name: "Haus Elite", color: "#d35400", img: "16.png" },
+    { min: 15000, name: "Zucker Baron", color: "#e91e63", img: "15.png" },
+    { min: 10000, name: "High Roller", color: "#8e44ad", img: "14.png" },
+    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff", img: "13.png" },
+    { min: 5000,  name: "Multi König", color: "#1a5276", img: "12.png" },
+    { min: 3500,  name: "Scatter Profi", color: "#2980b9", img: "11.png" },
+    { min: 2500,  name: "Bonus Shopper", color: "#3498db", img: "10.png" },
+    { min: 1800,  name: "Risiko Experte", color: "#145a32", img: "9.png" },
+    { min: 1200,  name: "Big Gambler", color: "#1f8b4c", img: "8.png" },
+    { min: 800,   name: "Rejuicer", color: "#1db954", img: "7.png" },
+    { min: 500,   name: "Bonus Magnet", color: "#2ecc71", img: "6.png" },
+    { min: 300,   name: "Stammgast", color: "#e5e4e2", img: "5.png" },
+    { min: 150,   name: "Dauerdreher", color: "#dcddde", img: "4.png" },
+    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d", img: "3.png" },
+    { min: 20,    name: "Glücksjäger", color: "#bdc3c7", img: "2.png" },
+    { min: 0,     name: "Casino Gast", color: "#95a5a6", img: "1.png" }
+];
+
 const getRankInfo = (mins) => {
     const current = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1];
     const nextIndex = ranks.indexOf(current) - 1;
@@ -147,13 +159,19 @@ function renderLeaderboard(userList, timeKey) { %>
                 <% } else if(index === 2) { %>
                     <i class="fas fa-medal crown-icon" style="color: #d97706; text-shadow: 0 0 15px rgba(217, 119, 6, 0.5);"></i>
                 <% } %>
+
                 <div class="avatar-wrapper">
-                    <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" class="podium-avatar <%= user.isStreaming ? 'glow-streaming' : '' %>">
+                    <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                         class="podium-avatar <%= user.isStreaming ? 'glow-streaming' : '' %>">
                     <img src="/images/ranks/<%= info.current.img %>" class="rank-badge-podium">
                 </div>
+
                 <h4 class="mb-1 text-truncate username-bright"><%= user.username %></h4>
-                <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;"><%= info.current.name %></div>
-                <div class="fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
+                <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;">
+                    <%= info.current.name %>
+                </div>
+                <% if(user.isStreaming) { %><span class="badge mb-2" style="background-color: #ff0055;">LIVE</span><% } %>
+                <div class="text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
                     <%= formatFullTime(user[timeKey]) %>
                 </div>
                 <div class="small opacity-50 mt-1">Platz <%= index + 1 %></div>
@@ -163,62 +181,64 @@ function renderLeaderboard(userList, timeKey) { %>
     <% } %>
 
     <div class="glass-card overflow-hidden">
-        <div class="leaderboard-scroll-area">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-black bg-opacity-40 sticky-top">
-                    <tr>
-                        <th class="ps-4 py-3">#</th>
-                        <th>User & Rang</th>
-                        <th class="text-end pe-4">Zeit</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <% userList.slice(3).forEach((user, index) => { 
-                        const info = getRankInfo(user[timeKey]);
-                    %>
-                    <tr class="border-bottom border-white border-opacity-10">
-                        <td class="ps-4 opacity-50">#<%= index + 4 %></td>
-                        <td class="d-flex align-items-center py-3">
-                            <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" style="width: 40px; height: 40px; border-radius: 50%;" class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
-                            <div class="flex-grow-1" style="max-width: 280px;">
-                                <div class="d-flex align-items-center">
-                                    <span class="username-bright me-2"><%= user.username %></span>
-                                    <% if(user.isStreaming) { %><span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span><% } %>
-                                </div>
-                                <div class="d-flex align-items-center mt-1">
-                                    <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
-                                    <div class="w-100">
-                                        <div class="d-flex justify-content-between" style="font-size: 0.65rem;">
-                                            <span class="rank-name-bright" style="color: <%= info.current.color %>;"><%= info.current.name %></span>
-                                            <% if(info.next) { %><span class="opacity-50">Next: <%= formatFullTime(info.next.min) %></span><% } %>
-                                        </div>
-                                        <% if(info.next) { %>
-                                        <div class="progress-custom">
-                                            <div class="progress-bar-animated" style="width: <%= info.progress %>%; background-color: <%= info.current.color %>; box-shadow: 0 0 5px <%= info.current.color %>80;"></div>
-                                        </div>
-                                        <% } %>
+        <table class="table table-hover align-middle mb-0 text-white">
+            <thead class="bg-black bg-opacity-40">
+                <tr>
+                    <th class="ps-4 py-3">#</th>
+                    <th>User & Rang</th>
+                    <th class="text-end pe-4">Zeit</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% userList.slice(3).forEach((user, index) => { 
+                    const info = getRankInfo(user[timeKey]);
+                %>
+                <tr class="border-bottom border-white border-opacity-10">
+                    <td class="ps-4 opacity-50">#<%= index + 4 %></td>
+                    <td class="d-flex align-items-center py-3">
+                        <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                             style="width: 40px; height: 40px; border-radius: 50%;" 
+                             class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
+                        <div class="flex-grow-1" style="max-width: 280px;">
+                            <div class="d-flex align-items-center">
+                                <span class="username-bright me-2"><%= user.username %></span>
+                                <% if(user.isStreaming) { %><span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span><% } %>
+                            </div>
+                            <div class="d-flex align-items-center mt-1">
+                                <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
+                                <div class="w-100">
+                                    <div class="d-flex justify-content-between" style="font-size: 0.65rem;">
+                                        <span class="rank-name-bright" style="color: <%= info.current.color %>;"><%= info.current.name %></span>
+                                        <% if(info.next) { %><span class="opacity-50">Next: <%= formatFullTime(info.next.min) %></span><% } %>
                                     </div>
+                                    <% if(info.next) { %>
+                                    <div class="progress-custom">
+                                        <div class="progress-bar" style="width: <%= info.progress %>%; background: <%= info.current.color %>; box-shadow: 0 0 5px <%= info.current.color %>80;"></div>
+                                    </div>
+                                    <% } %>
                                 </div>
                             </div>
-                        </td>
-                        <td class="text-end pe-4 fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
-                            <%= formatFullTime(user[timeKey]) %>
-                        </td>
-                    </tr>
-                    <% }) %>
-                </tbody>
-            </table>
-        </div>
+                        </div>
+                    </td>
+                    <td class="text-end pe-4 text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
+                        <%= formatFullTime(user[timeKey]) %>
+                    </td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
     </div>
 <% } %>
 
 <div class="container leaderboard-container">
     <div class="text-center mb-5 mt-4">
         <% if(guild.icon) { %>
-            <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="rounded-circle mb-3 shadow-lg border" style="width: 80px; height: 80px; border-width: 3px !important; border-color: var(--accent) !important;">
+            <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" 
+                 class="rounded-circle mb-3 shadow-lg border" 
+                 style="width: 80px; height: 80px; border-width: 3px !important; border-color: var(--accent) !important;">
         <% } %>
         <h1 class="display-5 fw-bold text-accent" style="letter-spacing: 3px; text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);">STREAM RANKING</h1>
-        <p class="opacity-75 text-uppercase fw-light" style="letter-spacing: 5px; color: white;"><%= guild.name %></p>
+        <p class="opacity-75 text-uppercase fw-light" style="letter-spacing: 5px;"><%= guild.name %></p>
     </div>
 
     <div class="ranking-content">
@@ -233,7 +253,7 @@ function renderLeaderboard(userList, timeKey) { %>
                     <div class="rank-card p-3 h-100 d-flex flex-column align-items-center" style="--hover-color: <%= r.color %>;">
                         <img src="/images/ranks/<%= r.img %>" class="rank-icon-roadmap">
                         <div class="rank-name-bright" style="color: <%= r.color %>; font-size: 0.75rem; line-height: 1.2;"><%= r.name %></div>
-                        <div class="mt-1 small opacity-50" style="font-size: 0.65rem; color: white !important;"><%= formatFullTime(r.min) %></div>
+                        <div class="mt-1 small opacity-50" style="font-size: 0.65rem;"><%= formatFullTime(r.min) %></div>
                     </div>
                 </div>
             <% }) %>
@@ -248,6 +268,7 @@ function renderLeaderboard(userList, timeKey) { %>
         const m = Math.floor(totalMins % 60);
         return h > 0 ? h + " Std. " + m + " Min." : m + " Min.";
     }
+    
     function updateLive() {
         const now = new Date();
         document.querySelectorAll('.live-timer').forEach(el => {
@@ -255,12 +276,15 @@ function renderLeaderboard(userList, timeKey) { %>
             const base = parseInt(el.getAttribute('data-base'));
             if(startStr && startStr !== 'null') {
                 const diff = Math.floor((now - new Date(startStr)) / 60000);
-                if(diff >= 0) el.innerText = formatTimeJS(base + diff);
+                if(diff >= 0) {
+                    el.innerText = formatTimeJS(base + diff);
+                }
             }
         });
     }
-    setInterval(updateLive, 10000);
+
     updateLive();
+    setInterval(updateLive, 10000);
     setTimeout(() => { window.location.reload(); }, 300000);
 </script>
 </body>
