@@ -312,7 +312,6 @@ setInterval(async () => {
     const statusChannelId = '1459882167848145073'; 
 
     for (const userData of allUsers) {
-        // JEDER USER WIRD ISOLIERT VERARBEITET
         try {
             let effectiveMinutes = userData.totalMinutes;
             if (userData.isStreaming && userData.lastStreamStart) {
@@ -332,7 +331,7 @@ setInterval(async () => {
                             .setTitle("🎉 RANG-AUFSTIEG!")
                             .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
                             .setColor(currentRank.color)
-                            .setThumbnail(userData.avatar);
+                            .setThumbnail(userData.avatar || null);
                         await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
                     }
                 }
@@ -340,46 +339,43 @@ setInterval(async () => {
                 await userData.save();
             }
 
-            // 2. AUTOMATISCHE ROLLEN-SYNCHRONISATION
+            // 2. AUTOMATISCHE ROLLEN-SYNCHRONISATION (ROBUST)
             const config = await GuildConfig.findOne({ guildId: userData.guildId });
             if (config && config.rewards && config.rewards.length > 0) {
                 const guild = client.guilds.cache.get(userData.guildId);
                 if (guild) {
+                    // WICHTIG: Member frisch fetchen
                     const member = await guild.members.fetch(userData.userId).catch(() => null);
                     
-                    if (member && userData.totalMinutes > 0) {
+                    if (member) {
                         const earnedRewards = config.rewards
                             .filter(r => effectiveMinutes >= r.minutesRequired)
                             .sort((a, b) => b.minutesRequired - a.minutesRequired);
 
                         const topReward = earnedRewards[0]; 
-                        const allConfiguredRoleIds = config.rewards.map(r => r.roleId);
+                        const allRewardRoleIds = config.rewards.map(r => r.roleId);
 
                         if (topReward) {
-                            for (const roleId of allConfiguredRoleIds) {
-                                // Kurzer Delay gegen Discord Rate Limits (0.2 Sek)
-                                await new Promise(resolve => setTimeout(resolve, 200));
-
-                                if (roleId === topReward.roleId) {
-                                    if (!member.roles.cache.has(roleId)) {
-                                        await member.roles.add(roleId).catch(e => console.error(`[ROLE-ADD-ERROR] User: ${userData.username}, Role: ${roleId}`));
-                                    }
-                                } else {
-                                    if (member.roles.cache.has(roleId)) {
-                                        await member.roles.remove(roleId).catch(e => console.error(`[ROLE-REM-ERROR] User: ${userData.username}, Role: ${roleId}`));
-                                    }
-                                }
+                            // Rolle hinzufügen falls nicht vorhanden
+                            if (!member.roles.cache.has(topReward.roleId)) {
+                                console.log(`[RANG] Gebe ${userData.username} die Rolle ${topReward.roleName}`);
+                                await member.roles.add(topReward.roleId).catch(err => {
+                                    console.error(`[FEHLER] Rolle konnte nicht vergeben werden: ${err.message}. Steht die Bot-Rolle hoch genug?`);
+                                });
                             }
-                        } else {
-                            for (const roleId of allConfiguredRoleIds) {
-                                if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(() => {});
+
+                            // Andere Casino-Rollen entfernen (Sync)
+                            for (const roleId of allRewardRoleIds) {
+                                if (roleId !== topReward.roleId && member.roles.cache.has(roleId)) {
+                                    await member.roles.remove(roleId).catch(() => {});
+                                }
                             }
                         }
                     }
                 }
             }
         } catch (err) {
-            console.error(`❌ Kritischer Fehler bei User ${userData.username || userData.userId}:`, err);
+            console.error(`❌ Fehler bei User ${userData.username || userData.userId}:`, err);
         }
     }
 }, 5 * 60000);
