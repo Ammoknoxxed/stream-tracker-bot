@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
-// --- 1. DATENBANK MODELLE (Monthly entfernt) ---
+// --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
     guildId: String,
     rewards: [{ minutesRequired: Number, roleId: String, roleName: String }],
@@ -66,26 +66,21 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Hilfsfunktion zur Echtzeit-Sortierung (Nur All-Time)
 function getSortedUsers(users) {
     const now = new Date();
     return users.map(user => {
         const u = user.toObject();
-        // Wir nutzen nur noch eine Zeitbasis: totalMinutes
         u.effectiveTotal = u.totalMinutes;
-        
         if (u.isStreaming && u.lastStreamStart) {
             const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
             if (diff > 0) u.effectiveTotal += diff;
         }
-        
-        // Damit das HTML-Template nicht abstürzt, belegen wir "effectiveMonthly" mit dem Gesamtwert
         u.effectiveMonthly = u.effectiveTotal; 
         return u;
     }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
 }
 
-// --- ROUTES ---
+// --- ROUTES (Dashboard & Leaderboard) ---
 app.get('/', (req, res) => res.render('index'));
 app.get('/login', passport.authenticate('discord'));
 app.get('/auth/discord/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => res.redirect('/dashboard'));
@@ -102,11 +97,9 @@ app.get('/leaderboard/:identifier', async (req, res) => {
                 client.guilds.cache.find(g => g.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-') === identifier.toLowerCase());
 
     if (!guild) return res.status(404).send("Leaderboard nicht gefunden.");
-
     const users = await StreamUser.find({ guildId: guild.id });
     const trackedUsers = getSortedUsers(users);
 
-    // Wir übergeben trackedUsers für beides, damit beide Tabs im HTML die Gesamtzeit zeigen
     res.render('leaderboard_public', { 
         guild, 
         allTimeLeaderboard: trackedUsers, 
@@ -135,7 +128,6 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers, roles, channels });
 });
 
-// POST Routes bleiben identisch...
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -176,7 +168,7 @@ app.post('/dashboard/:guildId/delete-user', async (req, res) => {
 
 app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 
-// --- 4. TRACKING LOGIK (Nur All-Time) ---
+// --- 4. TRACKING LOGIK ---
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
     try {
@@ -192,7 +184,7 @@ async function handleStreamStart(userId, guildId, username, avatarURL) {
                 },
                 { upsert: true }
             );
-            console.log(`📡 [START] ${username}`);
+            console.log(`📡 [START] ${username} (${guildId})`);
         }
     } catch (err) { console.error("Fehler in handleStreamStart:", err); }
 }
@@ -203,40 +195,59 @@ async function handleStreamStop(userId, guildId) {
         if (!userData || !userData.lastStreamStart || !userData.isStreaming) return;
 
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
-        
         if (minutes >= 1) {
             userData.totalMinutes += minutes;
             console.log(`🛑 [STOP] ${userData.username}: +${minutes} Min.`);
-            
-            const config = await GuildConfig.findOne({ guildId });
-            if (config) {
-                const guild = client.guilds.cache.get(guildId);
-                const member = await guild.members.fetch(userId).catch(() => null);
-                if (member) {
-                    for (const reward of config.rewards) {
-                        if (userData.totalMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
-                            await member.roles.add(reward.roleId).catch(() => {});
-                        }
-                    }
-                }
-            }
         }
-        
         userData.isStreaming = false;
         userData.lastStreamStart = null;
         await userData.save();
     } catch (err) { console.error("Fehler in handleStreamStop:", err); }
 }
 
-// Events bleiben gleich...
+// --- 5. INITIALER SCAN (Beim Start) ---
+async function scanActiveStreams() {
+    console.log("🔍 Scanne laufende Streams in allen Voice-Channels...");
+    for (const [guildId, guild] of client.guilds.cache) {
+        const config = await GuildConfig.findOne({ guildId });
+        
+        for (const [memberId, member] of guild.members.cache) {
+            if (member.user.bot) continue;
+            
+            const voiceState = member.voice;
+            const channel = voiceState.channel;
+
+            // Check ob User streamt
+            if (channel && voiceState.streaming) {
+                // Check ob Channel erlaubt ist
+                const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
+                                   config.allowedChannels.includes(channel.id) || 
+                                   (channel.parentId && config.allowedChannels.includes(channel.parentId));
+
+                if (isAllowed) {
+                    const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== memberId).size;
+                    if (viewerCount > 0) {
+                        await handleStreamStart(memberId, guildId, member.user.username, member.user.displayAvatarURL());
+                    }
+                }
+            }
+        }
+    }
+    console.log("✅ Scan abgeschlossen.");
+}
+
+// --- 6. EVENTS ---
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const guildId = newState.guild.id;
         const channel = newState.channel;
+        
+        // Wenn nicht mehr im Channel oder kein Stream mehr
         if (!channel || !newState.streaming) {
             await handleStreamStop(newState.id, guildId);
             return;
         }
+
         const config = await GuildConfig.findOne({ guildId });
         const isAllowed = !config || !config.allowedChannels || config.allowedChannels.length === 0 || 
                            config.allowedChannels.includes(channel.id) || 
@@ -246,10 +257,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             await handleStreamStop(newState.id, guildId);
             return;
         }
+
         const viewerCount = channel.members.filter(m => !m.user.bot && m.id !== newState.id).size;
-        if (newState.streaming && viewerCount > 0) {
-            const avatarURL = newState.member.user.displayAvatarURL({ extension: 'png', size: 128 });
-            await handleStreamStart(newState.id, guildId, newState.member.user.username, avatarURL);
+        if (viewerCount > 0) {
+            await handleStreamStart(newState.id, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
         } else {
             await handleStreamStop(newState.id, guildId);
         }
@@ -261,47 +272,53 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     const isStreaming = newPresence.activities.some(a => a.type === 1);
     const wasStreaming = oldPresence?.activities.some(a => a.type === 1);
     if (isStreaming && !wasStreaming) {
-        const avatarURL = newPresence.user.displayAvatarURL({ extension: 'png', size: 128 });
-        await handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username, avatarURL);
+        await handleStreamStart(newPresence.userId, newPresence.guild.id, newPresence.user.username, newPresence.user.displayAvatarURL());
     } else if (!isStreaming && wasStreaming) {
         await handleStreamStop(newPresence.userId, newPresence.guild.id);
     }
 });
 
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    if (interaction.commandName === 'leaderboard') {
-        const serverSlug = interaction.guild.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-        const lbLink = `https://stream-tracker-bot-production.up.railway.app/leaderboard/${serverSlug}`;
-        await interaction.reply({ content: `🏆 **Ranking:** ${lbLink}`, ephemeral: false });
-    }
-});
-
-// Echtzeit Rollen-Check (Nur All-Time)
+// --- 7. AUTOMATISCHER ROLLEN-CHECK (Echtzeit-Intervall) ---
 setInterval(async () => {
     const now = new Date();
-    const activeStreamers = await StreamUser.find({ isStreaming: true });
-    for (const userData of activeStreamers) {
-        if (!userData.lastStreamStart) continue;
-        const currentStreamMinutes = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
-        const totalEffectiveMinutes = userData.totalMinutes + currentStreamMinutes;
+    // Wir holen alle User, die aktuell streamen ODER bereits Punkte haben
+    const allUsers = await StreamUser.find({});
+    
+    for (const userData of allUsers) {
+        let effectiveMinutes = userData.totalMinutes;
+        
+        // Wenn der User gerade live ist, rechnen wir die aktuelle Session temporär dazu
+        if (userData.isStreaming && userData.lastStreamStart) {
+            const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+            if (currentDiff > 0) effectiveMinutes += currentDiff;
+        }
+
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
-        if (!config || !config.rewards.length) continue;
+        if (!config || !config.rewards || config.rewards.length === 0) continue;
+
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) continue;
+
         try {
             const member = await guild.members.fetch(userData.userId).catch(() => null);
             if (!member) continue;
+
             for (const reward of config.rewards) {
-                if (totalEffectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
+                if (effectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
                     await member.roles.add(reward.roleId).catch(() => {});
+                    console.log(`🏅 [REWARD] ${userData.username} -> ${reward.roleName} verliehen.`);
                 }
             }
-        } catch (e) { }
+        } catch (e) { console.error("Fehler beim Rollen-Verteilen:", e); }
     }
-}, 5 * 60000);
+}, 5 * 60000); // 5 Minuten Intervall
 
-// --- 6. START ---
+// --- 8. START ---
+client.once('ready', async () => {
+    console.log(`✅ Bot online: ${client.user.tag}`);
+    await scanActiveStreams(); // Scanner beim Start ausführen
+});
+
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
-app.listen(process.env.PORT || 3000, () => console.log(`✅ Dashboard läuft`));
+app.listen(process.env.PORT || 3000);
