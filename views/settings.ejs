@@ -15,6 +15,26 @@
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
+        .adjust-input {
+            width: 70px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-size: 0.85rem;
+        }
+        .btn-adjust {
+            background: #fbbf24;
+            color: black;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .btn-adjust:hover { background: #f59e0b; }
     </style>
 </head>
 <body>
@@ -44,12 +64,12 @@
                                 <th class="ps-4">Rank</th>
                                 <th>User</th>
                                 <th>Minuten</th>
+                                <th>Zeit anpassen (+/-)</th>
                                 <th class="text-end pe-4">Aktion</th>
                             </tr>
                         </thead>
                         <tbody>
                             <% trackedUsers.forEach((user, index) => { 
-                                // Live-Berechnung für den Moment des Seitenladens
                                 let displayMinutes = user.totalMinutes;
                                 if (user.isStreaming && user.lastStreamStart) {
                                     const sessionMins = Math.floor((new Date() - new Date(user.lastStreamStart)) / 60000);
@@ -83,6 +103,13 @@
                                     </span> 
                                     <span class="small opacity-50">Min</span>
                                 </td>
+                                <td>
+                                    <form action="/dashboard/<%= guild.id %>/adjust-time" method="POST" class="d-flex gap-1 align-items-center">
+                                        <input type="hidden" name="userId" value="<%= user.userId %>">
+                                        <input type="number" name="minutes" class="adjust-input" placeholder="+/- Min" required>
+                                        <button type="submit" class="btn-adjust">OK</button>
+                                    </form>
+                                </td>
                                 <td class="text-end pe-4">
                                     <form action="/dashboard/<%= guild.id %>/delete-user" method="POST" onsubmit="return confirm('Statistik wirklich löschen?')">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
@@ -92,7 +119,7 @@
                             </tr>
                             <% }) %>
                             <% if(trackedUsers.length === 0) { %>
-                                <tr><td colspan="4" class="text-center py-5 opacity-50">Noch keine Daten vorhanden.</td></tr>
+                                <tr><td colspan="5" class="text-center py-5 opacity-50">Noch keine Daten vorhanden.</td></tr>
                             <% } %>
                         </tbody>
                     </table>
@@ -167,8 +194,6 @@
             }
         });
     }
-
-    // Alle 10 Sekunden aktualisieren
     setInterval(updateLiveMinutes, 10000);
 </script>
 
