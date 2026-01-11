@@ -312,64 +312,74 @@ setInterval(async () => {
     const statusChannelId = '1459882167848145073'; 
 
     for (const userData of allUsers) {
-        let effectiveMinutes = userData.totalMinutes;
-        if (userData.isStreaming && userData.lastStreamStart) {
-            const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
-            if (currentDiff > 0) effectiveMinutes += currentDiff;
-        }
-
-        const currentRank = ranks.find(r => effectiveMinutes >= r.min) || ranks[ranks.length - 1];
-
-        // 1. LEVEL UP NEWS
-        if (userData.lastNotifiedRank !== currentRank.name) {
-            const oldRank = ranks.find(r => r.name === userData.lastNotifiedRank);
-            if (!oldRank || currentRank.min > oldRank.min) {
-                const channel = client.channels.cache.get(statusChannelId);
-                if (channel) {
-                    const levelEmbed = new EmbedBuilder()
-                        .setTitle("🎉 RANG-AUFSTIEG!")
-                        .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
-                        .setColor(currentRank.color)
-                        .setThumbnail(userData.avatar);
-                    channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] });
-                }
+        // JEDER USER WIRD ISOLIERT VERARBEITET
+        try {
+            let effectiveMinutes = userData.totalMinutes;
+            if (userData.isStreaming && userData.lastStreamStart) {
+                const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+                if (currentDiff > 0) effectiveMinutes += currentDiff;
             }
-            userData.lastNotifiedRank = currentRank.name;
-            await userData.save();
-        }
 
-        // 2. AUTOMATISCHE ROLLEN-SYNCHRONISATION
-        const config = await GuildConfig.findOne({ guildId: userData.guildId });
-        if (config && config.rewards && config.rewards.length > 0) {
-            const guild = client.guilds.cache.get(userData.guildId);
-            if (guild) {
-                const member = await guild.members.fetch(userData.userId).catch(() => null);
-                
-                // SICHERHEITSABFRAGE: Nur eingreifen, wenn der User wirklich Zeit im System gesammelt hat
-                if (member && userData.totalMinutes > 0) {
-                    const earnedRewards = config.rewards
-                        .filter(r => effectiveMinutes >= r.minutesRequired)
-                        .sort((a, b) => b.minutesRequired - a.minutesRequired);
+            const currentRank = ranks.find(r => effectiveMinutes >= r.min) || ranks[ranks.length - 1];
 
-                    const topReward = earnedRewards[0]; 
-                    const allConfiguredRoleIds = config.rewards.map(r => r.roleId);
+            // 1. LEVEL UP NEWS
+            if (userData.lastNotifiedRank !== currentRank.name) {
+                const oldRank = ranks.find(r => r.name === userData.lastNotifiedRank);
+                if (!oldRank || currentRank.min > oldRank.min) {
+                    const channel = client.channels.cache.get(statusChannelId);
+                    if (channel) {
+                        const levelEmbed = new EmbedBuilder()
+                            .setTitle("🎉 RANG-AUFSTIEG!")
+                            .setDescription(`Herzlichen Glückwunsch <@${userData.userId}>!\nDu hast den Rang **${currentRank.name}** erreicht! 🎰`)
+                            .setColor(currentRank.color)
+                            .setThumbnail(userData.avatar);
+                        await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
+                    }
+                }
+                userData.lastNotifiedRank = currentRank.name;
+                await userData.save();
+            }
 
-                    if (topReward) {
-                        for (const roleId of allConfiguredRoleIds) {
-                            if (roleId === topReward.roleId) {
-                                if (!member.roles.cache.has(roleId)) await member.roles.add(roleId).catch(() => {});
-                            } else {
+            // 2. AUTOMATISCHE ROLLEN-SYNCHRONISATION
+            const config = await GuildConfig.findOne({ guildId: userData.guildId });
+            if (config && config.rewards && config.rewards.length > 0) {
+                const guild = client.guilds.cache.get(userData.guildId);
+                if (guild) {
+                    const member = await guild.members.fetch(userData.userId).catch(() => null);
+                    
+                    if (member && userData.totalMinutes > 0) {
+                        const earnedRewards = config.rewards
+                            .filter(r => effectiveMinutes >= r.minutesRequired)
+                            .sort((a, b) => b.minutesRequired - a.minutesRequired);
+
+                        const topReward = earnedRewards[0]; 
+                        const allConfiguredRoleIds = config.rewards.map(r => r.roleId);
+
+                        if (topReward) {
+                            for (const roleId of allConfiguredRoleIds) {
+                                // Kurzer Delay gegen Discord Rate Limits (0.2 Sek)
+                                await new Promise(resolve => setTimeout(resolve, 200));
+
+                                if (roleId === topReward.roleId) {
+                                    if (!member.roles.cache.has(roleId)) {
+                                        await member.roles.add(roleId).catch(e => console.error(`[ROLE-ADD-ERROR] User: ${userData.username}, Role: ${roleId}`));
+                                    }
+                                } else {
+                                    if (member.roles.cache.has(roleId)) {
+                                        await member.roles.remove(roleId).catch(e => console.error(`[ROLE-REM-ERROR] User: ${userData.username}, Role: ${roleId}`));
+                                    }
+                                }
+                            }
+                        } else {
+                            for (const roleId of allConfiguredRoleIds) {
                                 if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(() => {});
                             }
-                        }
-                    } else {
-                        // User hat 1+ Minute, aber qualifiziert sich für keine Belohnung -> Rollen weg
-                        for (const roleId of allConfiguredRoleIds) {
-                            if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(() => {});
                         }
                     }
                 }
             }
+        } catch (err) {
+            console.error(`❌ Kritischer Fehler bei User ${userData.username || userData.userId}:`, err);
         }
     }
 }, 5 * 60000);
