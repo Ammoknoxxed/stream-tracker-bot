@@ -113,7 +113,6 @@ app.get('/dashboard/:guildId', async (req, res) => {
     let config = await GuildConfig.findOne({ guildId });
     if (!config) config = await GuildConfig.create({ guildId, rewards: [], allowedChannels: [] });
 
-    // Hier wird nun ebenfalls die Echtzeit-Sortierung angewendet
     const users = await StreamUser.find({ guildId });
     const trackedUsers = getSortedUsers(users);
 
@@ -288,7 +287,38 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// --- 5. START ---
+// --- 5. AUTOMATISCHER ROLLEN-CHECK (Echtzeit-Vergabe) ---
+setInterval(async () => {
+    const now = new Date();
+    const activeStreamers = await StreamUser.find({ isStreaming: true });
+
+    for (const userData of activeStreamers) {
+        if (!userData.lastStreamStart) continue;
+
+        const currentStreamMinutes = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+        const totalEffectiveMinutes = userData.totalMinutes + currentStreamMinutes;
+
+        const config = await GuildConfig.findOne({ guildId: userData.guildId });
+        if (!config || !config.rewards.length) continue;
+
+        const guild = client.guilds.cache.get(userData.guildId);
+        if (!guild) continue;
+
+        try {
+            const member = await guild.members.fetch(userData.userId).catch(() => null);
+            if (!member) continue;
+
+            for (const reward of config.rewards) {
+                if (totalEffectiveMinutes >= reward.minutesRequired && !member.roles.cache.has(reward.roleId)) {
+                    await member.roles.add(reward.roleId).catch(() => {});
+                    console.log(`🏅 [LIVE-REWARD] ${userData.username} hat ${reward.roleName} erreicht!`);
+                }
+            }
+        } catch (e) { console.error("Rollen-Check Fehler:", e); }
+    }
+}, 5 * 60000); // Check alle 5 Minuten
+
+// --- 6. START ---
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ MongoDB verbunden'))
     .catch(err => console.error('❌ MongoDB Fehler:', err));
