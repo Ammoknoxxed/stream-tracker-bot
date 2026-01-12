@@ -178,6 +178,29 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
+// Route zum Löschen eines Users aus dem Leaderboard
+app.post('/dashboard/:guildId/delete-user', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/');
+    
+    // Sicherheitscheck: Nur Admins der Guild dürfen das
+    const guildId = req.params.guildId;
+    const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
+    if (!adminGuilds.some(g => g.id === guildId)) return res.status(403).send("Keine Berechtigung.");
+
+    const { userId } = req.body;
+
+    try {
+        // Löscht den User aus der StreamUser Collection für diesen speziellen Server
+        await StreamUser.deleteOne({ userId: userId, guildId: guildId });
+        console.log(`User ${userId} wurde vom Server ${guildId} gelöscht.`);
+        
+        res.redirect(`/dashboard/${guildId}`);
+    } catch (err) {
+        console.error("Fehler beim Löschen des Users:", err);
+        res.status(500).send("Interner Fehler beim Löschen.");
+    }
+});
+
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -341,3 +364,4 @@ client.once('ready', () => console.log(`✅ ${client.user.tag} online!`));
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
+
