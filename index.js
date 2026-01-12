@@ -50,17 +50,23 @@ const streamUserSchema = new mongoose.Schema({
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
+// NEU: Backup Modell
+const backupSchema = new mongoose.Schema({
+    backupDate: { type: Date, default: Date.now },
+    data: Array
+});
+const Backup = mongoose.model('Backup', backupSchema);
+
 // --- 2. BOT SETUP ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages
     ],
-    partials: [Partials.GuildMember, Partials.User, Partials.Presence]
+    partials: [Partials.GuildMember, Partials.User]
 });
 
 // --- HELPER FUNKTIONEN ---
@@ -79,8 +85,25 @@ function getSortedUsers(users) {
     }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
 }
 
+// NEU: Funktion für die tägliche Datensicherung
+async function performBackup() {
+    try {
+        const allData = await StreamUser.find({});
+        if (allData.length > 0) {
+            await Backup.create({ data: allData });
+            console.log(`[BACKUP] Sicherung von ${allData.length} Usern erstellt.`);
+            
+            // Behalte nur die letzten 7 Backups (lösche alles, was älter als 7 Tage ist)
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            await Backup.deleteMany({ backupDate: { $lt: sevenDaysAgo } });
+        }
+    } catch (err) {
+        console.error("Backup Fehler:", err);
+    }
+}
+
 // Synchronisiert Rollen basierend auf der berechneten Zeit
-async function syncUserRoles(userData, now = new Date()) {
+async function syncUserRoles(userData) {
     try {
         const stats = getSortedUsers([userData])[0];
         const effectiveMinutes = stats.effectiveTotal;
@@ -94,6 +117,7 @@ async function syncUserRoles(userData, now = new Date()) {
         const member = await guild.members.fetch(userData.userId).catch(() => null);
         if (!member) return false;
 
+        // Finde alle Belohnungen, die der User zeitlich erreicht hat
         const earnedRewards = config.rewards
             .filter(r => effectiveMinutes >= r.minutesRequired)
             .sort((a, b) => b.minutesRequired - a.minutesRequired);
@@ -102,11 +126,11 @@ async function syncUserRoles(userData, now = new Date()) {
         const allRewardRoleIds = config.rewards.map(r => r.roleId);
 
         if (topReward) {
-            // Top Rolle hinzufügen falls nicht vorhanden
+            // Höchste Rolle hinzufügen
             if (!member.roles.cache.has(topReward.roleId)) {
                 await member.roles.add(topReward.roleId).catch(() => {});
             }
-            // Alle anderen (kleineren) Belohnungs-Rollen entfernen
+            // Alle anderen (kleineren) Belohnungs-Rollen konsequent entfernen
             for (const roleId of allRewardRoleIds) {
                 if (roleId !== topReward.roleId && member.roles.cache.has(roleId)) {
                     await member.roles.remove(roleId).catch(() => {});
@@ -164,12 +188,18 @@ app.get('/dashboard', async (req, res) => {
 
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
-    const guild = client.guilds.cache.get(req.params.guildId);
-    if (!guild) return res.send("Bot nicht auf Server oder Cache leer.");
+    const guildId = req.params.guildId;
+    const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
+    if (!adminGuilds.some(g => g.id === guildId)) return res.status(403).send("Keine Berechtigung.");
+
+    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) return res.send("Bot nicht auf Server.");
+
     let config = await GuildConfig.findOne({ guildId: guild.id }) || await GuildConfig.create({ guildId: guild.id });
     const users = await StreamUser.find({ guildId: guild.id });
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
     const channels = guild.channels.cache.filter(c => [2, 4, 13].includes(c.type)).map(c => ({ id: c.id, name: c.name }));
+    
     res.render('settings', { guild, config, trackedUsers: getSortedUsers(users), roles, channels });
 });
 
@@ -189,14 +219,10 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
 
 app.post('/dashboard/:guildId/delete-user', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
-    const guildId = req.params.guildId;
-    const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
-    if (!adminGuilds.some(g => g.id === guildId)) return res.status(403).send("Keine Berechtigung.");
-
     const { userId } = req.body;
     try {
-        await StreamUser.deleteOne({ userId, guildId });
-        res.redirect(`/dashboard/${guildId}`);
+        await StreamUser.deleteOne({ userId, guildId: req.params.guildId });
+        res.redirect(`/dashboard/${req.params.guildId}`);
     } catch (err) { res.status(500).send("Fehler beim Löschen."); }
 });
 
@@ -240,17 +266,18 @@ client.on('messageCreate', async (message) => {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("Admin only.");
         const allUsers = await StreamUser.find({ guildId: message.guild.id });
         for (const u of allUsers) await syncUserRoles(u);
-        return message.reply(`✅ Sync abgeschlossen.`);
+        return message.reply(`✅ Rollen-Sync für alle User abgeschlossen.`);
     }
 
     if (message.content.startsWith('!rank')) {
         if (message.channel.id !== allowedChannelId) return;
         
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
-        const stats = getSortedUsers(userData ? [userData] : [{ totalMinutes: 0, isStreaming: false }])[0];
+        const stats = getSortedUsers(userData ? [userData] : [{ totalMinutes: 0, isStreaming: false, userId: message.author.id }])[0];
         const totalMins = stats.effectiveTotal;
 
-        const currentRank = [...ranks].reverse().find(r => totalMins >= r.min) || ranks[ranks.length - 1];
+        // KORREKTUR: Finde den höchsten Rang (von oben nach unten suchen)
+        const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
         const currentRankIdx = ranks.findIndex(r => r.name === currentRank.name);
         const nextRank = ranks[currentRankIdx - 1] || null;
 
@@ -265,14 +292,18 @@ client.on('messageCreate', async (message) => {
             );
 
         if (nextRank) {
-            const needed = nextRank.min - totalMins;
-            const progress = Math.min(Math.floor((totalMins / nextRank.min) * 100), 100);
-            const bar = '🟩'.repeat(Math.floor(progress / 10)) + '⬛'.repeat(10 - Math.floor(progress / 10));
+            const neededRemaining = nextRank.min - totalMins;
+            const currentRangeMin = currentRank.min;
+            const rangeTotal = nextRank.min - currentRangeMin;
+            const progressInRange = totalMins - currentRangeMin;
+            const progressPercent = Math.min(Math.floor((progressInRange / rangeTotal) * 100), 99);
+
+            const bar = '🟩'.repeat(Math.floor(progressPercent / 10)) + '⬛'.repeat(10 - Math.floor(progressPercent / 10));
 
             embed.addFields(
                 { name: '\u200B', value: '\u200B' }, 
-                { name: `Nächstes Ziel: ${nextRank.name}`, value: `${bar} **${progress}%**` },
-                { name: 'Fehlende Zeit', value: `Noch \`${Math.floor(needed / 60)}h ${needed % 60}m\` bis zum nächsten Level-Up!` }
+                { name: `Nächstes Ziel: ${nextRank.name}`, value: `${bar} **${progressPercent}%**` },
+                { name: 'Fehlende Zeit', value: `Noch \`${Math.floor(neededRemaining / 60)}h ${neededRemaining % 60}m\` bis zum nächsten Level-Up!` }
             );
         }
 
@@ -282,29 +313,6 @@ client.on('messageCreate', async (message) => {
 
 // --- TRACKING LOGIK ---
 
-async function handleStreamStart(userId, guildId, username, avatarURL) {
-    await StreamUser.findOneAndUpdate(
-        { userId, guildId },
-        { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
-        { upsert: true }
-    );
-}
-
-async function handleStreamStop(userId, guildId) {
-    const userData = await StreamUser.findOne({ userId, guildId });
-    if (userData && userData.isStreaming && userData.lastStreamStart) {
-        const diffMs = new Date() - new Date(userData.lastStreamStart);
-        const minutes = Math.floor(diffMs / 60000); // Floor für Sicherheit
-        
-        if (minutes > 0) {
-            userData.totalMinutes += minutes;
-        }
-        userData.isStreaming = false;
-        userData.lastStreamStart = null;
-        await userData.save();
-    }
-}
-
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
     const userId = newState.id;
@@ -312,7 +320,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const config = await GuildConfig.findOne({ guildId });
     const isAllowedChannel = !config?.allowedChannels?.length || config.allowedChannels.includes(newState.channelId);
     
-    // Bedingung: Im Voice, streamt, im richtigen Channel und min. 1 Zuschauer (kein Bot)
     const isCurrentlyStreaming = 
         newState.channel && 
         newState.streaming && 
@@ -322,71 +329,80 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const userData = await StreamUser.findOne({ userId, guildId });
 
     if (isCurrentlyStreaming) {
-        // Starte NUR, wenn noch nicht aktiv (verhindert Reset bei Mute)
+        // VERHINDERT RESET: Nur starten, wenn nicht bereits aktiv
         if (!userData || !userData.isStreaming) {
-            await handleStreamStart(userId, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
-            console.log(`[START] ${newState.member.user.username} auf ${newState.guild.name}`);
+            await StreamUser.findOneAndUpdate(
+                { userId, guildId },
+                { isStreaming: true, lastStreamStart: new Date(), username: newState.member.user.username, avatar: newState.member.user.displayAvatarURL() },
+                { upsert: true }
+            );
+            console.log(`[START] ${newState.member.user.username}`);
         }
-    } else {
-        // Stoppe NUR, wenn er vorher als streamend markiert war
-        if (userData && userData.isStreaming) {
-            await handleStreamStop(userId, guildId);
-            console.log(`[STOP] ${userData.username} auf ${newState.guild.name}`);
-        }
+    } else if (userData && userData.isStreaming) {
+        // STOPPEN & ZEIT SPEICHERN
+        const diffMs = new Date() - new Date(userData.lastStreamStart);
+        const minutes = Math.floor(diffMs / 60000);
+        
+        if (minutes > 0) userData.totalMinutes += minutes;
+        userData.isStreaming = false;
+        userData.lastStreamStart = null;
+        await userData.save();
+        console.log(`[STOP] ${userData.username} (+${minutes}m)`);
     }
 });
 
-// --- AUTOMATISCHES INTERVALL (Alle 5 Minuten) ---
+// --- AUTOMATISCHE INTERVALLE ---
 
+// Alle 5 Minuten: Rang-Check & Level-Up News
 setInterval(async () => {
-    const now = new Date();
     const allUsers = await StreamUser.find({});
     const statusChannelId = '1459882167848145073'; 
 
     for (const userDoc of allUsers) {
         try {
-            // Rollen Sync
-            await syncUserRoles(userDoc, now);
-
-            // Level Up Check
+            await syncUserRoles(userDoc);
             const stats = getSortedUsers([userDoc])[0];
             const totalMins = stats.effectiveTotal;
 
-            // Finde höchsten Rang der erreicht wurde
-            const currentRank = [...ranks].reverse().find(r => totalMins >= r.min) || ranks[ranks.length - 1];
+            const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
+            const oldRankIdx = ranks.findIndex(r => r.name === userDoc.lastNotifiedRank);
+            const currentRankIdx = ranks.findIndex(r => r.name === currentRank.name);
 
-            if (userDoc.lastNotifiedRank !== currentRank.name) {
-                const oldRankIdx = ranks.findIndex(r => r.name === userDoc.lastNotifiedRank);
-                const currentRankIdx = ranks.findIndex(r => r.name === currentRank.name);
+            // AUFSTIEGS-SCHUTZ: Nur wenn der neue Index kleiner ist (näher an 0 / GOD)
+            if (userDoc.lastNotifiedRank !== currentRank.name && (oldRankIdx === -1 || currentRankIdx < oldRankIdx)) {
+                const channel = await client.channels.fetch(statusChannelId).catch(() => null);
+                if (channel) {
+                    const levelEmbed = new EmbedBuilder()
+                        .setAuthor({ name: 'LEVEL UP! 🎰' })
+                        .setTitle(`🎉 ${userDoc.username} ist aufgestiegen!`)
+                        .setDescription(`Du hast den Rang **${currentRank.name}** erreicht.`)
+                        .setColor(currentRank.color)
+                        .setThumbnail(userDoc.avatar || null)
+                        .addFields(
+                            { name: 'Vorher', value: userDoc.lastNotifiedRank || "Casino Gast", inline: true },
+                            { name: 'Jetzt', value: `**${currentRank.name}**`, inline: true },
+                            { name: 'Gesamtzeit', value: `\`${Math.floor(totalMins / 60)}h ${totalMins % 60}m\`` }
+                        )
+                        .setTimestamp();
 
-                // Wenn der neue Index kleiner ist, ist es ein Aufstieg (da GOD = Index 0)
-                if (oldRankIdx === -1 || currentRankIdx < oldRankIdx) {
-                    const channel = await client.channels.fetch(statusChannelId).catch(() => null);
-                    if (channel) {
-                        const levelEmbed = new EmbedBuilder()
-                            .setAuthor({ name: 'LEVEL UP! 🎰' })
-                            .setTitle(`🎉 ${userDoc.username} ist aufgestiegen!`)
-                            .setDescription(`Du hast den Rang **${currentRank.name}** erreicht.`)
-                            .setColor(currentRank.color)
-                            .setThumbnail(userDoc.avatar || null)
-                            .addFields(
-                                { name: 'Vorher', value: userDoc.lastNotifiedRank || "Casino Gast", inline: true },
-                                { name: 'Jetzt', value: `**${currentRank.name}**`, inline: true },
-                                { name: 'Gesamtzeit', value: `\`${Math.floor(totalMins / 60)}h ${totalMins % 60}m\`` }
-                            )
-                            .setTimestamp();
-
-                        await channel.send({ content: `<@${userDoc.userId}>`, embeds: [levelEmbed] }).catch(() => {});
-                    }
+                    await channel.send({ content: `<@${userDoc.userId}>`, embeds: [levelEmbed] }).catch(() => {});
                 }
                 userDoc.lastNotifiedRank = currentRank.name;
                 await userDoc.save();
             }
-        } catch (err) { console.error("Interval Loop Error:", err); }
+        } catch (err) { console.error("Loop Error:", err); }
     }
 }, 5 * 60000);
 
-client.once('ready', () => console.log(`✅ ${client.user.tag} ist bereit!`));
+// Alle 24 Stunden: Backup
+setInterval(performBackup, 24 * 60 * 60 * 1000);
+
+// --- START ---
+client.once('ready', () => {
+    console.log(`✅ ${client.user.tag} online!`);
+    performBackup(); // Erstes Backup beim Start
+});
+
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
