@@ -278,13 +278,27 @@ async function handleStreamStop(userId, guildId) {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
+    const userId = newState.id;
+
+    // --- MUTE/DEAFEN SCHUTZ ---
+    // Wenn der User im gleichen Kanal bleibt und sich sein Streaming-Status nicht geändert hat, 
+    // ignorieren wir das Event (dadurch läuft das Tracking bei Mute/Unmute einfach weiter).
+    if (oldState.channelId === newState.channelId && oldState.streaming === newState.streaming) {
+        return;
+    }
+
     const config = await GuildConfig.findOne({ guildId });
     const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(newState.channelId);
     
-    if (newState.channel && newState.streaming && isAllowed && newState.channel.members.filter(m => !m.user.bot).size > 1) {
-        await handleStreamStart(newState.id, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
+    // Prüfen, ob Zuschauer da sind (Zuschauer-Zahl ohne Bots)
+    const hasViewers = newState.channel && newState.channel.members.filter(m => !m.user.bot).size > 1;
+
+    // Logik: User muss im Channel sein, streamen, im erlaubten Channel sein und Zuschauer haben
+    if (newState.channel && newState.streaming && isAllowed && hasViewers) {
+        await handleStreamStart(userId, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
     } else {
-        await handleStreamStop(newState.id, guildId);
+        // Stoppt nur, wenn der Stream wirklich aus geht, der Channel gewechselt wird oder keine Zuschauer mehr da sind
+        await handleStreamStop(userId, guildId);
     }
 });
 
@@ -341,3 +355,4 @@ client.once('ready', () => console.log(`✅ ${client.user.tag} online!`));
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
+
