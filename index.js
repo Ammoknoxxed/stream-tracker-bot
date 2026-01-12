@@ -424,10 +424,12 @@ setInterval(async () => {
 
 // --- BOT START & VERBINDUNGEN ---
 
+// --- BOT START & VERBINDUNGEN ---
+
 client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
 
-    // Wir warten 5 Sekunden, damit der Bot Zeit hat, die Server-Daten (Cache) zu laden
+    // Das "async" vor () => ist hier entscheidend!
     setTimeout(async () => {
         try {
             log('🔄 Starte Initialisierungs-Scan...');
@@ -445,7 +447,7 @@ client.once('ready', async () => {
             for (const guild of client.guilds.cache.values()) {
                 log(`📡 Scanne Server: ${guild.name}...`);
                 
-                // WICHTIG: Mitglieder erzwingen zu laden (Caching-Fix)
+                // Mitglieder laden (Caching-Fix)
                 await guild.members.fetch().catch(() => log(`⚠️ Konnte Member für ${guild.name} nicht laden.`));
                 
                 const config = await GuildConfig.findOne({ guildId: guild.id });
@@ -454,7 +456,6 @@ client.once('ready', async () => {
                 for (const channel of voiceChannels.values()) {
                     const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
                     
-                    // Nur echte User zählen (keine Bots)
                     const humansInChannel = channel.members.filter(m => !m.user.bot);
                     const hasViewers = humansInChannel.size > 1;
 
@@ -516,6 +517,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
