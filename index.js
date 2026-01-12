@@ -428,21 +428,58 @@ client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
 
     try {
-        // --- GEISTER-STREAMS BEREINIGEN ---
-        // Setzt beim Start alle auf "nicht live", falls der Bot während eines Streams abgestürzt ist
-        const resetResult = await StreamUser.updateMany({ isStreaming: true }, { isStreaming: false, lastStreamStart: null });
-        log(`🧹 Geister-Streams bereinigt: ${resetResult.modifiedCount} User zurückgesetzt.`);
+        // 1. --- DATENBANK BEREINIGEN ---
+        // Wir setzen alle auf offline, damit wir keine alten Leichen mitschleppen
+        const resetResult = await StreamUser.updateMany(
+            { isStreaming: true }, 
+            { isStreaming: false, lastStreamStart: null }
+        );
+        log(`🧹 Geister-Streams in DB bereinigt: ${resetResult.modifiedCount} User zurückgesetzt.`);
 
-        // --- INITIALER CHECK ALLER USER ---
-        log('🔍 Starte initialen User-Check (Rollen-Abgleich)...');
-        const allUsers = await StreamUser.find({});
-        let count = 0;
+        // 2. --- AKTIVER SCAN: WER STREAMT JETZT? ---
+        log('🔍 Scanne Voice-Channels nach aktiven Streamern...');
         
+        let activeFound = 0;
+        for (const [guildId, guild] of client.guilds.cache) {
+            // Konfiguration laden (für erlaubte Kanäle)
+            const config = await GuildConfig.findOne({ guildId });
+            
+            // Alle Voice-Channels durchgehen
+            const voiceChannels = guild.channels.cache.filter(c => c.type === 2);
+            
+            for (const [channelId, channel] of voiceChannels) {
+                const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channelId);
+                
+                // Alle Member im Voice-Kanal prüfen
+                for (const [memberId, member] of channel.members) {
+                    if (member.user.bot) continue;
+
+                    // Zuschauer-Check (muss mehr als 1 Person im Channel sein)
+                    const hasViewers = channel.members.filter(m => !m.user.bot).size > 1;
+
+                    // Wenn der User den Stream-Knopf an hat und alles andere passt
+                    if (member.voice.streaming && isAllowed && hasViewers) {
+                        activeFound++;
+                        await handleStreamStart(
+                            member.id, 
+                            guild.id, 
+                            member.user.username, 
+                            member.user.displayAvatarURL()
+                        );
+                    }
+                }
+            }
+        }
+        log(`✨ Scan beendet: ${activeFound} aktive Streamer gefunden und Tracking gestartet.`);
+
+        // 3. --- INITIALER ROLLEN-CHECK ---
+        log('🔍 Starte initialen Rollen-Abgleich...');
+        const allUsers = await StreamUser.find({});
         for (const userData of allUsers) {
             await syncUserRoles(userData);
-            count++;
         }
-        log(`✅ Initialer Check abgeschlossen. ${count} User geprüft.`);
+        log(`✅ Check abgeschlossen. ${allUsers.length} User in DB geprüft.`);
+        
     } catch (err) {
         log(`❌ Fehler beim Start-Check: ${err.message}`);
     }
@@ -461,6 +498,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
