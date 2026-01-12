@@ -5,14 +5,7 @@ const { Strategy } = require('passport-discord');
 const session = require('express-session');
 const mongoose = require('mongoose');
 const path = require('path');
-const MongoStore = require('connect-mongo'); // Neu für sichere Sessions
 require('dotenv').config();
-
-// --- LOGGING HELPER ---
-function botLog(type, message) {
-    const timestamp = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
-    console.log(`[${timestamp}] [${type}] ${message}`);
-}
 
 // --- 0. RANG KONFIGURATION ---
 const ranks = [
@@ -57,30 +50,24 @@ const streamUserSchema = new mongoose.Schema({
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
-const backupSchema = new mongoose.Schema({
-    backupDate: { type: Date, default: Date.now },
-    data: Array
-});
-const Backup = mongoose.model('Backup', backupSchema);
-
 // --- 2. BOT SETUP ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages
     ],
-    partials: [Partials.GuildMember, Partials.User]
+    partials: [Partials.GuildMember, Partials.User, Partials.Presence]
 });
 
 // --- HELPER FUNKTIONEN ---
-
 function getSortedUsers(users) {
     const now = new Date();
     return users.map(user => {
-        const u = user.toObject ? user.toObject() : user;
+        const u = user.toObject();
         u.effectiveTotal = u.totalMinutes;
         if (u.isStreaming && u.lastStreamStart) {
             const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
@@ -90,25 +77,15 @@ function getSortedUsers(users) {
     }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
 }
 
-async function performBackup() {
+async function syncUserRoles(userData, now = new Date()) {
     try {
-        const allData = await StreamUser.find({});
-        if (allData.length > 0) {
-            await Backup.create({ data: allData });
-            botLog('BACKUP', `Sicherung von ${allData.length} Usern erstellt.`);
-            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-            await Backup.deleteMany({ backupDate: { $lt: sevenDaysAgo } });
+        let effectiveMinutes = userData.totalMinutes;
+        if (userData.isStreaming && userData.lastStreamStart) {
+            const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+            if (currentDiff > 0) effectiveMinutes += currentDiff;
         }
-    } catch (err) { botLog('ERROR', "Backup Fehler: " + err.message); }
-}
-
-async function syncUserRoles(userData) {
-    try {
-        const stats = getSortedUsers([userData])[0];
-        const effectiveMinutes = stats.effectiveTotal;
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards || config.rewards.length === 0) return false;
-
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) return false;
         const member = await guild.members.fetch(userData.userId).catch(() => null);
@@ -135,23 +112,11 @@ async function syncUserRoles(userData) {
     } catch (err) { return false; }
 }
 
-// --- EXPRESS SETUP ---
+// --- EXPRESS / DASHBOARD SETUP ---
 const app = express();
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
-
-// SESSIONS SICHERER MACHEN
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback-secret-123',
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
-    cookie: { secure: false, maxAge: 1000 * 60 * 60 * 24 * 7 } // 1 Woche
-}));
-
-app.use(passport.initialize());
-app.use(passport.session());
 
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((obj, done) => done(null, obj));
@@ -163,28 +128,21 @@ passport.use(new Strategy({
     proxy: true
 }, (accessToken, refreshToken, profile, done) => done(null, profile)));
 
-// --- WEB ROUTES ---
+app.use(session({ secret: 'stream-tracker-secret', resave: false, saveUninitialized: false }));
+app.use(passport.initialize());
+app.use(passport.session());
 
+// --- WEB ROUTES ---
 app.get('/', (req, res) => res.render('index'));
 
-// FIX: Leaderboard-Route sicherstellen
 app.get('/leaderboard/:guildId', async (req, res) => {
     try {
         const guildId = req.params.guildId;
-        const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
-        if (!guild) return res.status(404).send("Server nicht gefunden oder Bot nicht auf dem Server.");
-        
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) return res.status(404).send("Server nicht gefunden.");
         const users = await StreamUser.find({ guildId });
-        res.render('leaderboard_public', { 
-            guild, 
-            allTimeLeaderboard: getSortedUsers(users), 
-            monthName: "Gesamtstatistik", 
-            ranks 
-        });
-    } catch (err) { 
-        botLog('ERROR', `Leaderboard Fehler: ${err.message}`);
-        res.status(500).send("Interner Fehler beim Laden des Leaderboards."); 
-    }
+        res.render('leaderboard_public', { guild, allTimeLeaderboard: getSortedUsers(users), monthName: "Gesamtstatistik", ranks });
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
 app.get('/login', passport.authenticate('discord'));
@@ -198,120 +156,96 @@ app.get('/dashboard', async (req, res) => {
 
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
-    const guildId = req.params.guildId;
-    const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
-    if (!adminGuilds.some(g => g.id === guildId)) return res.status(403).send("Kein Zugriff.");
-
-    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+    const guild = client.guilds.cache.get(req.params.guildId);
     if (!guild) return res.send("Bot nicht auf Server.");
-
     let config = await GuildConfig.findOne({ guildId: guild.id }) || await GuildConfig.create({ guildId: guild.id });
     const users = await StreamUser.find({ guildId: guild.id });
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
-    const channels = guild.channels.cache.filter(c => [2, 4, 13].includes(c.type)).map(c => ({ id: c.id, name: c.name }));
-    
+    const channels = guild.channels.cache.filter(c => [2, 4].includes(c.type)).map(c => ({ id: c.id, name: c.name }));
     res.render('settings', { guild, config, trackedUsers: getSortedUsers(users), roles, channels });
 });
 
-// Post-Routen (Adjust Time, Delete, Save...)
+// DASHBOARD ACTIONS
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.isAuthenticated()) return res.redirect('/');
     const { userId, minutes } = req.body;
+    const adjustment = parseInt(minutes);
     const userData = await StreamUser.findOne({ userId, guildId: req.params.guildId });
-    if (userData) {
-        userData.totalMinutes = Math.max(0, userData.totalMinutes + parseInt(minutes));
+    if (userData && !isNaN(adjustment)) {
+        userData.totalMinutes = Math.max(0, userData.totalMinutes + adjustment);
         await userData.save();
-        botLog('DASHBOARD', `Zeit für ${userData.username} angepasst: ${minutes} Min.`);
     }
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
-// --- INITIALER CHECK FUNKTION ---
-async function checkActiveStreams() {
-    botLog('SYSTEM', 'Führe initialen Stream-Check auf allen Servern durch...');
-    let initialCount = 0;
+// Route zum Löschen eines Users aus dem Leaderboard
+app.post('/dashboard/:guildId/delete-user', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/');
+    
+    // Sicherheitscheck: Nur Admins der Guild dürfen das
+    const guildId = req.params.guildId;
+    const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
+    if (!adminGuilds.some(g => g.id === guildId)) return res.status(403).send("Keine Berechtigung.");
 
-    for (const guild of client.guilds.cache.values()) {
-        try {
-            const config = await GuildConfig.findOne({ guildId: guild.id });
-            const voiceChannels = guild.channels.cache.filter(c => [2, 13].includes(c.type));
+    const { userId } = req.body;
 
-            for (const channel of voiceChannels.values()) {
-                const isAllowedChannel = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
-                if (!isAllowedChannel) continue;
-
-                // Alle echten User im Channel (keine Bots)
-                const members = channel.members.filter(m => !m.user.bot);
-                const viewerCount = members.size - 1;
-
-                for (const member of members.values()) {
-                    // Kriterien: Streamt + mindestens 1 Zuschauer
-                    if (member.voice.streaming && viewerCount >= 1) {
-                        const userData = await StreamUser.findOne({ userId: member.id, guildId: guild.id });
-                        
-                        // Nur starten, wenn nicht bereits als "streaming" markiert
-                        if (!userData || !userData.isStreaming) {
-                            await StreamUser.findOneAndUpdate(
-                                { userId: member.id, guildId: guild.id },
-                                { 
-                                    isStreaming: true, 
-                                    lastStreamStart: new Date(), 
-                                    username: member.user.username, 
-                                    avatar: member.user.displayAvatarURL() 
-                                },
-                                { upsert: true }
-                            );
-                            initialCount++;
-                            botLog('START-UP', `Streamer erfasst: ${member.user.username} in ${channel.name}`);
-                        }
-                    }
-                }
-            }
-        } catch (err) {
-            botLog('ERROR', `Fehler beim Scan von Gilde ${guild.id}: ${err.message}`);
-        }
+    try {
+        // Löscht den User aus der StreamUser Collection für diesen speziellen Server
+        await StreamUser.deleteOne({ userId: userId, guildId: guildId });
+        console.log(`User ${userId} wurde vom Server ${guildId} gelöscht.`);
+        
+        res.redirect(`/dashboard/${guildId}`);
+    } catch (err) {
+        console.error("Fehler beim Löschen des Users:", err);
+        res.status(500).send("Interner Fehler beim Löschen.");
     }
-    botLog('SYSTEM', `Check abgeschlossen. ${initialCount} aktive Streams gefunden.`);
-}
+});
+
+app.post('/dashboard/:guildId/save', async (req, res) => {
+    const { minutes, roleId } = req.body;
+    const guild = client.guilds.cache.get(req.params.guildId);
+    const role = guild.roles.cache.get(roleId);
+    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } });
+    res.redirect(`/dashboard/${req.params.guildId}`);
+});
+
+app.post('/dashboard/:guildId/save-channels', async (req, res) => {
+    let { channels } = req.body;
+    if (!channels) channels = [];
+    if (!Array.isArray(channels)) channels = [channels];
+    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { allowedChannels: channels }, { upsert: true });
+    res.redirect(`/dashboard/${req.params.guildId}`);
+});
+
+app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
+    const config = await GuildConfig.findOne({ guildId: req.params.guildId });
+    config.rewards.splice(req.body.rewardIndex, 1);
+    await config.save();
+    res.redirect(`/dashboard/${req.params.guildId}`);
+});
 
 // --- DISCORD EVENTS ---
-
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
     const allowedChannelId = '1459882167848145073';
 
-    // ERWEITERTES SYNC: Korrigiert Rollen UND Datenbank-Status
     if (message.content === '!sync') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("Admin only.");
-        
-        botLog('SYNC', `Manueller Sync gestartet von ${message.author.username}`);
         const allUsers = await StreamUser.find({ guildId: message.guild.id });
-        let updateCount = 0;
-
-        for (const u of allUsers) {
-            await syncUserRoles(u);
-            const stats = getSortedUsers([u])[0];
-            const currentRank = ranks.find(r => stats.effectiveTotal >= r.min) || ranks[ranks.length - 1];
-            
-            if (u.lastNotifiedRank !== currentRank.name) {
-                u.lastNotifiedRank = currentRank.name;
-                await u.save();
-                updateCount++;
-            }
-        }
-        return message.reply(`✅ Sync fertig. ${updateCount} User-Ränge in der DB korrigiert.`);
+        for (const u of allUsers) await syncUserRoles(u);
+        return message.reply(`✅ Sync abgeschlossen.`);
     }
 
     if (message.content.startsWith('!rank')) {
         if (message.channel.id !== allowedChannelId) return;
         
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
-        const stats = getSortedUsers(userData ? [userData] : [{ totalMinutes: 0, isStreaming: false, userId: message.author.id }])[0];
+        const stats = getSortedUsers(userData ? [userData] : [])[0] || { effectiveTotal: 0 };
         const totalMins = stats.effectiveTotal;
 
         const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
-        const currentRankIdx = ranks.findIndex(r => r.name === currentRank.name);
-        const nextRank = ranks[currentRankIdx - 1] || null;
+        const nextRankIndex = ranks.indexOf(currentRank) - 1;
+        const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
 
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Juicer Status für ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
@@ -324,112 +258,109 @@ client.on('messageCreate', async (message) => {
             );
 
         if (nextRank) {
-            const neededRemaining = nextRank.min - totalMins;
-            const range = nextRank.min - currentRank.min;
-            const progress = totalMins - currentRank.min;
-            const percent = Math.min(Math.floor((progress / range) * 100), 99);
-            const bar = '🟩'.repeat(Math.floor(percent / 10)) + '⬛'.repeat(10 - Math.floor(percent / 10));
+            const needed = nextRank.min - totalMins;
+            const progress = Math.min(Math.floor((totalMins / nextRank.min) * 100), 100);
+            const progressBarLength = 10;
+            const filledBlocks = Math.round((progress / 100) * progressBarLength);
+            const emptyBlocks = progressBarLength - filledBlocks;
+            const bar = '🟩'.repeat(filledBlocks) + '⬛'.repeat(emptyBlocks);
 
             embed.addFields(
                 { name: '\u200B', value: '\u200B' }, 
-                { name: `Ziel: ${nextRank.name}`, value: `${bar} **${percent}%**` },
-                { name: 'Fehlt noch', value: `\`${Math.floor(neededRemaining / 60)}h ${neededRemaining % 60}m\`` }
+                { name: `Nächstes Ziel: ${nextRank.name}`, value: `${bar} **${progress}%**` },
+                { name: 'Fehlende Zeit', value: `Noch \`${Math.floor(needed / 60)}h ${needed % 60}m\` bis zum nächsten Level-Up!` }
             );
+        } else {
+            embed.addFields({ name: '🌟 Maximum erreicht', value: 'Du bist eine absolute Legende!' });
         }
+
+        embed.setFooter({ text: 'Bleib dran! 🎰', iconURL: client.user.displayAvatarURL() }).setTimestamp();
         message.channel.send({ embeds: [embed] });
     }
 });
 
 // --- TRACKING LOGIK ---
+async function handleStreamStart(userId, guildId, username, avatarURL) {
+    await StreamUser.findOneAndUpdate(
+        { userId, guildId },
+        { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
+        { upsert: true }
+    );
+}
 
-client.on('voiceStateUpdate', async (oldState, newState) => {
-    const guildId = newState.guild.id;
-    const userId = newState.id;
-    const username = newState.member?.user.username || "Unbekannt";
-
-    const config = await GuildConfig.findOne({ guildId });
-    const isAllowedChannel = !config?.allowedChannels?.length || config.allowedChannels.includes(newState.channelId);
-    
-    // Zuschauer-Check: Alle im Channel minus der Streamer selbst
-    const membersInChannel = newState.channel ? newState.channel.members.filter(m => !m.user.bot).size : 0;
-    const viewerCount = membersInChannel - 1;
-    
-    const isCurrentlyStreaming = newState.channel && newState.streaming && isAllowedChannel && viewerCount >= 1;
+async function handleStreamStop(userId, guildId) {
     const userData = await StreamUser.findOne({ userId, guildId });
-
-    if (isCurrentlyStreaming) {
-        if (!userData || !userData.isStreaming) {
-            await StreamUser.findOneAndUpdate(
-                { userId, guildId },
-                { isStreaming: true, lastStreamStart: new Date(), username, avatar: newState.member.user.displayAvatarURL() },
-                { upsert: true }
-            );
-            botLog('STREAM', `${username} startete Tracking (${newState.channel.name})`);
-        }
-    } else if (userData && userData.isStreaming) {
-        // Stop-Gründe für Logs
-        let reason = "Unbekannt";
-        if (!newState.channel) reason = "Voice verlassen";
-        else if (!newState.streaming) reason = "Stream beendet";
-        else if (viewerCount < 1) reason = "Keine Zuschauer";
-        else if (!isAllowedChannel) reason = "Falscher Channel";
-
-        const diffMs = new Date() - new Date(userData.lastStreamStart);
-        const minutes = Math.floor(diffMs / 60000);
-        
-        if (minutes > 0) userData.totalMinutes += minutes;
+    if (userData?.isStreaming) {
+        const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
+        userData.totalMinutes += Math.max(0, minutes);
         userData.isStreaming = false;
         userData.lastStreamStart = null;
         await userData.save();
-        botLog('STREAM', `${username} gestoppt (+${minutes}m). Grund: ${reason}`);
+    }
+}
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    const guildId = newState.guild.id;
+    const config = await GuildConfig.findOne({ guildId });
+    const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(newState.channelId);
+    
+    if (newState.channel && newState.streaming && isAllowed && newState.channel.members.filter(m => !m.user.bot).size > 1) {
+        await handleStreamStart(newState.id, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
+    } else {
+        await handleStreamStop(newState.id, guildId);
     }
 });
 
-// --- INTERVALLE & START ---
-
+// --- AUTOMATISCHES INTERVALL (Alle 5 Minuten) ---
 setInterval(async () => {
+    const now = new Date();
     const allUsers = await StreamUser.find({});
     const statusChannelId = '1459882167848145073'; 
 
-    for (const userDoc of allUsers) {
+    for (const userData of allUsers) {
         try {
-            await syncUserRoles(userDoc);
-            const stats = getSortedUsers([userDoc])[0];
-            const currentRank = ranks.find(r => stats.effectiveTotal >= r.min) || ranks[ranks.length - 1];
-            const oldRankIdx = ranks.findIndex(r => r.name === userDoc.lastNotifiedRank);
-            const currentRankIdx = ranks.findIndex(r => r.name === currentRank.name);
+            await syncUserRoles(userData, now);
 
-            // Level-Up Benachrichtigung
-            if (userDoc.lastNotifiedRank !== currentRank.name && (oldRankIdx === -1 || currentRankIdx < oldRankIdx)) {
-                const channel = await client.channels.fetch(statusChannelId).catch(() => null);
-                if (channel) {
-                    const levelEmbed = new EmbedBuilder()
-                        .setAuthor({ name: 'LEVEL UP! 🎰' })
-                        .setTitle(`🎉 ${userDoc.username} ist jetzt ${currentRank.name}!`)
-                        .setColor(currentRank.color)
-                        .setThumbnail(userDoc.avatar)
-                        .addFields(
-                            { name: 'Vorher', value: userDoc.lastNotifiedRank || "Casino Gast", inline: true },
-                            { name: 'Gesamtzeit', value: `\`${Math.floor(stats.effectiveTotal / 60)}h ${stats.effectiveTotal % 60}m\``, inline: true }
-                        )
-                        .setTimestamp();
-                    await channel.send({ content: `<@${userDoc.userId}>`, embeds: [levelEmbed] });
-                }
-                userDoc.lastNotifiedRank = currentRank.name;
-                await userDoc.save();
+            let totalMins = userData.totalMinutes;
+            if (userData.isStreaming && userData.lastStreamStart) {
+                const diff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+                if (diff > 0) totalMins += diff;
             }
-        } catch (err) { botLog('ERROR', `Loop-Fehler: ${err.message}`); }
+
+            const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
+
+            if (userData.lastNotifiedRank !== currentRank.name) {
+                const oldRankIndex = ranks.findIndex(r => r.name === userData.lastNotifiedRank);
+                const currentRankIndex = ranks.findIndex(r => r.name === currentRank.name);
+
+                if (oldRankIndex === -1 || currentRankIndex < oldRankIndex) {
+                    const channel = await client.channels.fetch(statusChannelId).catch(() => null);
+                    if (channel) {
+                        const levelEmbed = new EmbedBuilder()
+                            .setAuthor({ name: 'LEVEL UP! 🎰' })
+                            .setTitle(`🎉 ${userData.username} ist aufgestiegen!`)
+                            .setDescription(`Wahnsinn! Du hast den Rang **${currentRank.name}** erreicht.`)
+                            .setColor(currentRank.color)
+                            .setThumbnail(userData.avatar || null)
+                            .addFields(
+                                { name: 'Vorher', value: userData.lastNotifiedRank || "Keiner", inline: true },
+                                { name: 'Jetzt', value: `**${currentRank.name}**`, inline: true },
+                                { name: 'Gesamtzeit', value: `\`${Math.floor(totalMins / 60)}h ${totalMins % 60}m\`` }
+                            )
+                            .setFooter({ text: 'Die Walzen stehen niemals still...' })
+                            .setTimestamp();
+
+                        await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
+                    }
+                }
+                userData.lastNotifiedRank = currentRank.name;
+                await userData.save();
+            }
+        } catch (err) { console.error("Interval Error:", err); }
     }
 }, 5 * 60000);
 
-setInterval(performBackup, 24 * 60 * 60 * 1000);
-
-client.once('ready', async () => {
-    botLog('SYSTEM', `${client.user.tag} ist online.`);
-    await checkActiveStreams(); // Der Scan beim Start
-    performBackup();
-});
-
-mongoose.connect(process.env.MONGO_URI).then(() => botLog('DATABASE', 'MongoDB verbunden'));
+client.once('ready', () => console.log(`✅ ${client.user.tag} online!`));
+mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
-app.listen(process.env.PORT || 3000, () => botLog('WEB', `Server läuft auf Port ${process.env.PORT || 3000}`));
+app.listen(process.env.PORT || 3000);
