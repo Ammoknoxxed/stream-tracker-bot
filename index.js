@@ -171,7 +171,9 @@ app.get('/dashboard/:guildId', async (req, res) => {
     res.render('settings', { guild, config, trackedUsers: getSortedUsers(users), roles, channels });
 });
 
-// DASHBOARD ACTIONS
+// --- DASHBOARD ACTIONS ---
+
+// 1. Zeit anpassen (hast du bereits)
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const { userId, minutes } = req.body;
@@ -179,15 +181,46 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     const userData = await StreamUser.findOne({ userId, guildId: req.params.guildId });
     
     if (userData && !isNaN(adjustment)) {
-        // Log für die Zeitanpassung im Dashboard
         log(`⚙️ DASHBOARD: Zeit für ${userData.username} um ${adjustment} Min. angepasst.`); 
-        
         userData.totalMinutes = Math.max(0, userData.totalMinutes + adjustment);
         await userData.save();
+        // Rollen sofort synchronisieren nach Anpassung
+        await syncUserRoles(userData);
     }
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
+// 2. USER LÖSCHEN (Hard Reset: Daten weg + Rollen weg)
+app.post('/dashboard/:guildId/delete-user', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/');
+    const { userId } = req.body;
+    const guildId = req.params.guildId;
+
+    try {
+        const userData = await StreamUser.findOne({ userId, guildId });
+        if (userData) {
+            const guild = client.guilds.cache.get(guildId);
+            const config = await GuildConfig.findOne({ guildId });
+            
+            // Rollen auf Discord entfernen, bevor die Daten gelöscht werden
+            if (guild && config && config.rewards) {
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (member) {
+                    const allRewardRoleIds = config.rewards.map(r => r.roleId);
+                    await member.roles.remove(allRewardRoleIds).catch(err => log(`⚠️ Rollen-Reset fehlgeschlagen: ${err.message}`));
+                }
+            }
+
+            await StreamUser.deleteOne({ userId, guildId });
+            log(`🗑️ HARD RESET: User ${userData.username} gelöscht & Rollen entfernt.`);
+        }
+    } catch (err) {
+        log(`❌ FEHLER beim User-Reset: ${err.message}`);
+    }
+    res.redirect(`/dashboard/${guildId}`);
+});
+
+// 3. Belohnung speichern (hast du bereits)
 app.post('/dashboard/:guildId/save', async (req, res) => {
     const { minutes, roleId } = req.body;
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -196,6 +229,7 @@ app.post('/dashboard/:guildId/save', async (req, res) => {
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
+// 4. Kanäle speichern (hast du bereits)
 app.post('/dashboard/:guildId/save-channels', async (req, res) => {
     let { channels } = req.body;
     if (!channels) channels = [];
@@ -204,6 +238,7 @@ app.post('/dashboard/:guildId/save-channels', async (req, res) => {
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
+// 5. Belohnung löschen (hast du bereits)
 app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
     const config = await GuildConfig.findOne({ guildId: req.params.guildId });
     config.rewards.splice(req.body.rewardIndex, 1);
@@ -404,3 +439,4 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
