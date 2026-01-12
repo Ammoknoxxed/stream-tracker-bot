@@ -424,12 +424,10 @@ setInterval(async () => {
 
 // --- BOT START & VERBINDUNGEN ---
 
-// --- BOT START & VERBINDUNGEN ---
-
 client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
 
-    // Das "async" vor () => ist hier entscheidend!
+    // WICHTIG: Hier muss "async () =>" stehen, damit await darin funktioniert!
     setTimeout(async () => {
         try {
             log('🔄 Starte Initialisierungs-Scan...');
@@ -447,7 +445,7 @@ client.once('ready', async () => {
             for (const guild of client.guilds.cache.values()) {
                 log(`📡 Scanne Server: ${guild.name}...`);
                 
-                // Mitglieder laden (Caching-Fix)
+                // Mitglieder erzwingen zu laden (Caching-Fix)
                 await guild.members.fetch().catch(() => log(`⚠️ Konnte Member für ${guild.name} nicht laden.`));
                 
                 const config = await GuildConfig.findOne({ guildId: guild.id });
@@ -456,6 +454,7 @@ client.once('ready', async () => {
                 for (const channel of voiceChannels.values()) {
                     const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
                     
+                    // Nur echte User zählen (keine Bots)
                     const humansInChannel = channel.members.filter(m => !m.user.bot);
                     const hasViewers = humansInChannel.size > 1;
 
@@ -478,30 +477,17 @@ client.once('ready', async () => {
             log(`✅ Scan beendet: ${activeFound} aktive Streamer gefunden.`);
 
             // 3. INITIALER ROLLEN-CHECK
+            log('🔍 Starte initialen Rollen-Abgleich...');
             const allUsers = await StreamUser.find({});
-            log(`🔍 Prüfe Rollen für ${allUsers.length} User...`);
             for (const userData of allUsers) {
                 await syncUserRoles(userData);
             }
-            log('🎊 Start-Vorgang vollständig abgeschlossen.');
+            log(`🎊 Start-Vorgang vollständig abgeschlossen. ${allUsers.length} Profile geprüft.`);
 
         } catch (err) {
             log(`❌ Fehler im Start-Ablauf: ${err.message}`);
         }
-    }, 5000); 
-});
-
-        // 3. --- INITIALER ROLLEN-CHECK ---
-        log('🔍 Starte initialen Rollen-Abgleich...');
-        const allUsers = await StreamUser.find({});
-        for (const userData of allUsers) {
-            await syncUserRoles(userData);
-        }
-        log(`✅ Check abgeschlossen. ${allUsers.length} User in DB geprüft.`);
-        
-    } catch (err) {
-        log(`❌ Fehler beim Start-Check: ${err.message}`);
-    }
+    }, 5000); // 5 Sekunden warten, bis alles bereit ist
 });
 
 // Datenbank-Verbindung
@@ -517,9 +503,3 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
-
-
-
-
-
-
