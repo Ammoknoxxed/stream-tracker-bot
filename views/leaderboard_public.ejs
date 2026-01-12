@@ -24,6 +24,25 @@
             margin: 0;
         }
 
+        /* SCROLL-LOGIK OHNE SICHTBARE BARS */
+        .scroll-container {
+            max-height: 600px; /* Begrenzt die Höhe auf ca. 8-10 weitere Plätze */
+            overflow-y: auto;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+        }
+        .scroll-container::-webkit-scrollbar {
+            display: none; /* Chrome/Safari */
+        }
+
+        /* Sticky Header für die Tabelle beim Scrollen */
+        .sticky-thead {
+            position: sticky;
+            top: 0;
+            background: #0a0a0f;
+            z-index: 10;
+        }
+
         .leaderboard-container { max-width: 1000px; margin: 40px auto; }
         
         .glass-card {
@@ -68,7 +87,6 @@
         
         .rank-icon-list { width: 35px; height: 35px; margin-right: 10px; object-fit: contain; }
 
-        /* NEU: Effekt für die Roadmap unten */
         .rank-card { 
             background: rgba(255, 255, 255, 0.03); 
             border: 1px solid rgba(255, 255, 255, 0.05); 
@@ -181,52 +199,54 @@ function renderLeaderboard(userList, timeKey) { %>
     <% } %>
 
     <div class="glass-card overflow-hidden">
-        <table class="table table-hover align-middle mb-0 text-white">
-            <thead class="bg-black bg-opacity-40">
-                <tr>
-                    <th class="ps-4 py-3">#</th>
-                    <th>User & Rang</th>
-                    <th class="text-end pe-4">Zeit</th>
-                </tr>
-            </thead>
-            <tbody>
-                <% userList.slice(3).forEach((user, index) => { 
-                    const info = getRankInfo(user[timeKey]);
-                %>
-                <tr class="border-bottom border-white border-opacity-10">
-                    <td class="ps-4 opacity-50">#<%= index + 4 %></td>
-                    <td class="d-flex align-items-center py-3">
-                        <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
-                             style="width: 40px; height: 40px; border-radius: 50%;" 
-                             class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
-                        <div class="flex-grow-1" style="max-width: 280px;">
-                            <div class="d-flex align-items-center">
-                                <span class="username-bright me-2"><%= user.username %></span>
-                                <% if(user.isStreaming) { %><span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span><% } %>
-                            </div>
-                            <div class="d-flex align-items-center mt-1">
-                                <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
-                                <div class="w-100">
-                                    <div class="d-flex justify-content-between" style="font-size: 0.65rem;">
-                                        <span class="rank-name-bright" style="color: <%= info.current.color %>;"><%= info.current.name %></span>
-                                        <% if(info.next) { %><span class="opacity-50">Next: <%= formatFullTime(info.next.min) %></span><% } %>
+        <div class="scroll-container">
+            <table class="table table-hover align-middle mb-0 text-white">
+                <thead class="sticky-thead bg-black">
+                    <tr>
+                        <th class="ps-4 py-3">#</th>
+                        <th>User & Rang</th>
+                        <th class="text-end pe-4">Zeit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% userList.slice(3).forEach((user, index) => { 
+                        const info = getRankInfo(user[timeKey]);
+                    %>
+                    <tr class="border-bottom border-white border-opacity-10">
+                        <td class="ps-4 opacity-50">#<%= index + 4 %></td>
+                        <td class="d-flex align-items-center py-3">
+                            <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                                 style="width: 40px; height: 40px; border-radius: 50%;" 
+                                 class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
+                            <div class="flex-grow-1" style="max-width: 280px;">
+                                <div class="d-flex align-items-center">
+                                    <span class="username-bright me-2"><%= user.username %></span>
+                                    <% if(user.isStreaming) { %><span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span><% } %>
+                                </div>
+                                <div class="d-flex align-items-center mt-1">
+                                    <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
+                                    <div class="w-100">
+                                        <div class="d-flex justify-content-between" style="font-size: 0.65rem;">
+                                            <span class="rank-name-bright" style="color: <%= info.current.color %>;"><%= info.current.name %></span>
+                                            <% if(info.next) { %><span class="opacity-50">Next: <%= formatFullTime(info.next.min) %></span><% } %>
+                                        </div>
+                                        <% if(info.next) { %>
+                                        <div class="progress-custom">
+                                            <div class="progress-bar" style="width: <%= info.progress %>%; background: <%= info.current.color %>; box-shadow: 0 0 5px <%= info.current.color %>80;"></div>
+                                        </div>
+                                        <% } %>
                                     </div>
-                                    <% if(info.next) { %>
-                                    <div class="progress-custom">
-                                        <div class="progress-bar" style="width: <%= info.progress %>%; background: <%= info.current.color %>; box-shadow: 0 0 5px <%= info.current.color %>80;"></div>
-                                    </div>
-                                    <% } %>
                                 </div>
                             </div>
-                        </div>
-                    </td>
-                    <td class="text-end pe-4 text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
-                        <%= formatFullTime(user[timeKey]) %>
-                    </td>
-                </tr>
-                <% }) %>
-            </tbody>
-        </table>
+                        </td>
+                        <td class="text-end pe-4 text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
+                            <%= formatFullTime(user[timeKey]) %>
+                        </td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
     </div>
 <% } %>
 
