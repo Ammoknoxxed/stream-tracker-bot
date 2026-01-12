@@ -363,6 +363,21 @@ setInterval(async () => {
 
     for (const userData of allUsers) {
         try {
+            // --- NEU: ANTI-GEISTER-PRÜFUNG ---
+            if (userData.isStreaming) {
+                const guild = client.guilds.cache.get(userData.guildId);
+                const member = await guild?.members.fetch(userData.userId).catch(() => null);
+                
+                // Falls der User nicht mehr im Voice ist, den Stream nicht mehr an hat oder den Server verlassen hat
+                if (!member || !member.voice.channel || !member.voice.streaming) {
+                    log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} korrigiert.`);
+                    await handleStreamStop(userData.userId, userData.guildId);
+                    // Wir springen zum nächsten User, da dieser Stream gerade beendet wurde
+                    continue; 
+                }
+            }
+
+            // --- BESTEHEND: ROLLEN & LEVEL-UP LOGIK ---
             await syncUserRoles(userData, now);
 
             let totalMins = userData.totalMinutes;
@@ -395,8 +410,6 @@ setInterval(async () => {
                             .setTimestamp();
 
                         await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
-                        
-                        // Hier wird das Level-Up geloggt
                         log(`⭐ LEVEL UP: ${userData.username} hat den Rang ${currentRank.name} erreicht!`);
                     }
                 }
@@ -404,8 +417,7 @@ setInterval(async () => {
                 await userData.save();
             }
         } catch (err) { 
-            // Hier wird der Fehler mit deiner log() Funktion geloggt
-            log(`❌ FEHLER im Intervall: ${err.message}`); 
+            log(`❌ FEHLER im Intervall bei User ${userData.username}: ${err.message}`); 
         }
     }
 }, 5 * 60000);
@@ -415,20 +427,24 @@ setInterval(async () => {
 client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
 
-    // --- INITIALER CHECK ALLER USER ---
-    log('🔍 Starte initialen User-Check (Rollen-Abgleich)...');
     try {
+        // --- GEISTER-STREAMS BEREINIGEN ---
+        // Setzt beim Start alle auf "nicht live", falls der Bot während eines Streams abgestürzt ist
+        const resetResult = await StreamUser.updateMany({ isStreaming: true }, { isStreaming: false, lastStreamStart: null });
+        log(`🧹 Geister-Streams bereinigt: ${resetResult.modifiedCount} User zurückgesetzt.`);
+
+        // --- INITIALER CHECK ALLER USER ---
+        log('🔍 Starte initialen User-Check (Rollen-Abgleich)...');
         const allUsers = await StreamUser.find({});
         let count = 0;
         
         for (const userData of allUsers) {
-            // Prüft für jeden User in der DB, ob die Rolle zur Zeit passt
             await syncUserRoles(userData);
             count++;
         }
         log(`✅ Initialer Check abgeschlossen. ${count} User geprüft.`);
     } catch (err) {
-        log(`❌ Fehler beim initialen Check: ${err.message}`);
+        log(`❌ Fehler beim Start-Check: ${err.message}`);
     }
 });
 
@@ -445,5 +461,6 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
