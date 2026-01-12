@@ -7,6 +7,12 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
+function log(message) {
+    const now = new Date();
+    const time = now.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+    console.log(`[${time}] ${message}`);
+}
+
 // --- 0. RANG KONFIGURATION ---
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
@@ -171,7 +177,11 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     const { userId, minutes } = req.body;
     const adjustment = parseInt(minutes);
     const userData = await StreamUser.findOne({ userId, guildId: req.params.guildId });
+    
     if (userData && !isNaN(adjustment)) {
+        // Log für die Zeitanpassung im Dashboard
+        log(`⚙️ DASHBOARD: Zeit für ${userData.username} um ${adjustment} Min. angepasst.`); 
+        
         userData.totalMinutes = Math.max(0, userData.totalMinutes + adjustment);
         await userData.save();
     }
@@ -258,6 +268,7 @@ client.on('messageCreate', async (message) => {
 
 // --- TRACKING LOGIK ---
 async function handleStreamStart(userId, guildId, username, avatarURL) {
+    log(`🟢 START: ${username} (${userId}) hat einen Stream gestartet.`); // LOG HINZUFÜGEN
     await StreamUser.findOneAndUpdate(
         { userId, guildId },
         { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
@@ -269,6 +280,7 @@ async function handleStreamStop(userId, guildId) {
     const userData = await StreamUser.findOne({ userId, guildId });
     if (userData?.isStreaming) {
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
+        log(`🔴 STOPP: ${userData.username} hat den Stream beendet. Dauer: ${minutes} Min.`); // LOG HINZUFÜGEN
         userData.totalMinutes += Math.max(0, minutes);
         userData.isStreaming = false;
         userData.lastStreamStart = null;
@@ -342,12 +354,18 @@ setInterval(async () => {
                             .setTimestamp();
 
                         await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
+                        
+                        // Hier wird das Level-Up geloggt
+                        log(`⭐ LEVEL UP: ${userData.username} hat den Rang ${currentRank.name} erreicht!`);
                     }
                 }
                 userData.lastNotifiedRank = currentRank.name;
                 await userData.save();
             }
-        } catch (err) { console.error("Interval Error:", err); }
+        } catch (err) { 
+            // Hier wird der Fehler mit deiner log() Funktion geloggt
+            log(`❌ FEHLER im Intervall: ${err.message}`); 
+        }
     }
 }, 5 * 60000);
 
@@ -355,4 +373,5 @@ client.once('ready', () => console.log(`✅ ${client.user.tag} online!`));
 mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
 client.login(process.env.TOKEN);
 app.listen(process.env.PORT || 3000);
+
 
