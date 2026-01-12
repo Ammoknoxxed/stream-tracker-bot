@@ -15,10 +15,8 @@
     "mongoose": "^8.0.3",
     "passport": "^0.7.0",
     "passport-discord": "^0.1.4"
-    "connect-mongo": "^5.1.0"
   },
   "engines": {
     "node": "18.x"
   }
-
 }
