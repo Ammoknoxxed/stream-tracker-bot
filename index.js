@@ -371,21 +371,36 @@ setInterval(async () => {
 
 // --- BOT START & VERBINDUNGEN ---
 
-// Loggt, wenn der Discord Bot bereit ist
-client.once('ready', () => {
+client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
+
+    // --- INITIALER CHECK ALLER USER ---
+    log('🔍 Starte initialen User-Check (Rollen-Abgleich)...');
+    try {
+        const allUsers = await StreamUser.find({});
+        let count = 0;
+        
+        for (const userData of allUsers) {
+            // Prüft für jeden User in der DB, ob die Rolle zur Zeit passt
+            await syncUserRoles(userData);
+            count++;
+        }
+        log(`✅ Initialer Check abgeschlossen. ${count} User geprüft.`);
+    } catch (err) {
+        log(`❌ Fehler beim initialen Check: ${err.message}`);
+    }
 });
 
-// Loggt den Status der Datenbankverbindung
+// Datenbank-Verbindung
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => log('✅ MongoDB Datenbank erfolgreich verbunden'))
-    .catch(err => log(`❌ MongoDB Fehler beim Start: ${err.message}`));
+    .then(() => log('✅ MongoDB Datenbank verbunden'))
+    .catch(err => log(`❌ MongoDB Fehler: ${err.message}`));
 
-// Webserver Start (Port-Zuweisung für Railway/Hosting)
+// Webserver Start
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     log(`🌐 Webserver läuft auf Port ${PORT}`);
 });
 
-// Login ausführen
+// Bot Login
 client.login(process.env.TOKEN);
