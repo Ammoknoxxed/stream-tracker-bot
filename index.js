@@ -369,9 +369,23 @@ setInterval(async () => {
     }
 }, 5 * 60000);
 
-client.once('ready', () => console.log(`✅ ${client.user.tag} online!`));
-mongoose.connect(process.env.MONGO_URI).then(() => console.log('✅ MongoDB verbunden'));
+// --- BOT START & VERBINDUNGEN ---
+
+// Loggt, wenn der Discord Bot bereit ist
+client.once('ready', () => {
+    log(`✅ Discord Bot online als ${client.user.tag}`);
+});
+
+// Loggt den Status der Datenbankverbindung
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => log('✅ MongoDB Datenbank erfolgreich verbunden'))
+    .catch(err => log(`❌ MongoDB Fehler beim Start: ${err.message}`));
+
+// Webserver Start (Port-Zuweisung für Railway/Hosting)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    log(`🌐 Webserver läuft auf Port ${PORT}`);
+});
+
+// Login ausführen
 client.login(process.env.TOKEN);
-app.listen(process.env.PORT || 3000);
-
-
