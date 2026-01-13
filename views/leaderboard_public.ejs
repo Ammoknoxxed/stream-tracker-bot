@@ -78,29 +78,44 @@
             letter-spacing: 0.5px;
         }
 
+/* --- OPTIMIERTES PODIUM STYLING --- */
         .top-three { display: flex; justify-content: center; align-items: flex-end; gap: 20px; margin-bottom: 60px; padding-top: 40px; }
-        .podium-card { padding: 20px; text-align: center; position: relative; transition: 0.3s; overflow: hidden; cursor: help; }
         
-        .podium-card:hover { 
-            transform: translateY(-15px) scale(1.02); 
-            border-color: var(--accent) !important;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+        .podium-card { 
+            padding: 20px; text-align: center; position: relative; transition: 0.3s; 
+            overflow: hidden; cursor: help; border-width: 2px !important; 
         }
         
-        .podium-1 { order: 2; width: 240px; height: 360px; border: 2px solid #fbbf24 !important; box-shadow: 0 0 30px rgba(251, 191, 36, 0.3); }
-
-        .podium-1::after {
+        /* Der Glanz-Effekt gilt jetzt für ALLE Karten (podium-card) */
+        .podium-card::after {
             content: ""; position: absolute; top: 0; left: -150%; width: 60%; height: 100%;
             background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%); 
             transform: skewX(-25deg); animation: sheen 4s infinite; pointer-events: none;
         }
+        
+        .podium-card:hover { 
+            transform: translateY(-15px) scale(1.02); 
+            box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+            /* Border-Farbe bleibt beim Hover die jeweilige Rang-Farbe */
+        }
+        
+        /* Platz 1 - GOLD */
+        .podium-1 { order: 2; width: 240px; height: 360px; border: 2px solid #fbbf24 !important; box-shadow: 0 0 30px rgba(251, 191, 36, 0.3); }
+        .podium-1 .podium-avatar { width: 110px; height: 110px; border-color: #fbbf24; box-shadow: 0 0 20px rgba(251, 191, 36, 0.5); }
+        .podium-1:hover { border-color: #fbbf24 !important; }
 
-        .podium-2 { order: 1; width: 200px; height: 300px; border: 1px solid rgba(229, 231, 235, 0.4) !important; }
-        .podium-3 { order: 3; width: 200px; height: 300px; border: 1px solid rgba(217, 119, 6, 0.4) !important; }
+        /* Platz 2 - SILBER */
+        .podium-2 { order: 1; width: 200px; height: 310px; border: 2px solid #e5e7eb !important; box-shadow: 0 0 20px rgba(229, 231, 235, 0.2); }
+        .podium-2 .podium-avatar { border-color: #e5e7eb; }
+        .podium-2:hover { border-color: #e5e7eb !important; }
+
+        /* Platz 3 - BRONZE */
+        .podium-3 { order: 3; width: 200px; height: 310px; border: 2px solid #d97706 !important; box-shadow: 0 0 20px rgba(217, 119, 6, 0.2); }
+        .podium-3 .podium-avatar { border-color: #d97706; }
+        .podium-3:hover { border-color: #d97706 !important; }
 
         .avatar-wrapper { position: relative; display: inline-block; margin-bottom: 15px; z-index: 5; }
         .podium-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #fff; transition: 0.3s; }
-        .podium-1 .podium-avatar { width: 110px; height: 110px; border-color: #fbbf24; box-shadow: 0 0 20px rgba(251, 191, 36, 0.5); }
         
         .rank-badge-podium { position: absolute; bottom: -5px; right: -5px; width: 45px; height: 45px; object-fit: contain; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5)); z-index: 2; }
         .podium-1 .rank-badge-podium { width: 55px; height: 55px; }
