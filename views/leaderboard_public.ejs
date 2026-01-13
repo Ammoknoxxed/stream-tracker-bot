@@ -242,7 +242,7 @@ function renderLeaderboard(userList, timeKey) { %>
                                         <div class="d-flex justify-content-between" style="font-size: 0.65rem;">
                                             <span class="rank-name-bright" style="color: <%= info.current.color %>;"><%= info.current.name %></span>
                                             <% if(info.next) { %>
-                                                <span class="text-white fw-bold" style="opacity: 0.9;">Next: <%= formatFullTime(info.next.min) %></span>
+                                                <span class="next-rank-text" style="font-size: 0.6rem;">Nächster Rang ab: <%= formatFullTime(info.next.min) %></span>
                                             <% } %>
                                         </div>
                                         <% if(info.next) { %>
