@@ -297,9 +297,11 @@ function renderLeaderboard(userList, timeKey) { %>
                     <img src="/images/ranks/<%= info.current.img %>" class="rank-badge-podium">
                 </div>
 
-                <h4 class="mb-1 text-truncate username-bright"><%= user.username %></h4>
+                <h4 class="mb-0 text-truncate username-bright"><%= user.displayName || user.username %></h4>
+                <div class="opacity-50 mb-2" style="font-size: 0.7rem; font-weight: 400; line-height: 1;">@<%= user.username %></div>
+
                 <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;">
-                    <%= info.current.name %>
+                <%= info.current.name %>
                 </div>
                 <% if(user.isStreaming) { %><span class="badge mb-2" style="background-color: #ff0055;">LIVE</span><% } %>
                 <div class="text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
@@ -335,18 +337,25 @@ function renderLeaderboard(userList, timeKey) { %>
                         data-bs-toggle="tooltip" 
                         data-bs-placement="right"
                         data-bs-title="<%= info.next ? 'Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis zum nächsten Rang' : 'Höchster Rang erreicht!' %>">
+                        
                         <td class="ps-4 opacity-50">#<%= index + 4 %></td>
+                        
                         <td class="d-flex align-items-center py-3">
                             <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                                  style="width: 40px; height: 40px; border-radius: 50%;" 
                                  class="me-3 border <%= user.isStreaming ? 'glow-streaming' : 'border-secondary' %>">
+                            
                             <div class="flex-grow-1" style="max-width: 280px;">
-                                <div class="d-flex align-items-center">
-                                    <span class="username-bright me-2"><%= user.username %></span>
+                                <div class="d-flex align-items-center mb-1">
+                                    <div class="d-flex flex-column">
+                                        <span class="username-bright leading-tight"><%= user.displayName || user.username %></span>
+                                        <span class="opacity-50" style="font-size: 0.65rem; font-weight: 400; margin-top: -2px;">@<%= user.username %></span>
+                                    </div>
                                     <% if(user.isStreaming) { %>
-                                        <span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span>
+                                        <span class="badge ms-2" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span>
                                     <% } %>
                                 </div>
+
                                 <div class="d-flex align-items-center mt-1">
                                     <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
                                     <div class="w-100">
@@ -367,6 +376,7 @@ function renderLeaderboard(userList, timeKey) { %>
                                 </div>
                             </div>
                         </td>
+
                         <td class="text-end pe-4 text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
                             <%= formatFullTime(user[timeKey]) %>
                         </td>
@@ -424,24 +434,21 @@ function renderLeaderboard(userList, timeKey) { %>
             delay: { "show": 100, "hide": 100 }
         }));
 
-        // --- NEU: Suchfunktion Logik ---
+        // --- NEU: Verbesserte Suchfunktion ---
         const searchInput = document.getElementById('userSearch');
         if (searchInput) {
             searchInput.addEventListener('input', function(e) {
                 const searchTerm = e.target.value.toLowerCase();
-                // Findet alle Zeilen in der Tabelle
                 const tableRows = document.querySelectorAll('#leaderboardTable tbody tr');
 
                 tableRows.forEach(row => {
-                    // Sucht den Usernamen in der aktuellen Zeile
-                    const usernameEl = row.querySelector('.username-bright');
-                    if (usernameEl) {
-                        const username = usernameEl.innerText.toLowerCase();
-                        if (username.includes(searchTerm)) {
-                            row.classList.remove('d-none-search');
-                        } else {
-                            row.classList.add('d-none-search');
-                        }
+                    // Sucht jetzt im gesamten Text der Zeile (DisplayName, @Tag, Rangname etc.)
+                    const rowText = row.innerText.toLowerCase();
+                    
+                    if (rowText.includes(searchTerm)) {
+                        row.classList.remove('d-none-search');
+                    } else {
+                        row.classList.add('d-none-search');
                     }
                 });
             });
