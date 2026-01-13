@@ -147,14 +147,27 @@
 
         .rank-card:hover {
             background: rgba(255, 255, 255, 0.08);
-            transform: translateY(-8px);
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            transform: translateY(-12px); /* Etwas höher für mehr Dynamik */
+            border-color: var(--hover-color) !important; /* Leuchtet in Rang-Farbe */
+            box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.5), 0 0 20px -5px var(--hover-color);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         .rank-card:hover .rank-icon-roadmap {
-            transform: scale(1.2) rotate(5deg);
-            filter: drop-shadow(0 0 12px var(--hover-color, #fff));
+            filter: drop-shadow(0 0 15px var(--hover-color));
+            /* Hier wird die neue Animation aufgerufen */
+            animation: floatingShake 2s ease-in-out infinite;
+        }
+
+        /* Die kombinierte Schwebe- und Beben-Animation */
+        @keyframes floatingShake {
+            0% { transform: scale(1.2) translateY(0) rotate(0deg); }
+            15% { transform: scale(1.2) translateY(-4px) rotate(-3deg); }
+            30% { transform: scale(1.2) translateY(-7px) rotate(3deg); }
+            45% { transform: scale(1.2) translateY(-9px) rotate(-3deg); }
+            60% { transform: scale(1.2) translateY(-7px) rotate(3deg); }
+            80% { transform: scale(1.2) translateY(-4px) rotate(-1deg); }
+            100% { transform: scale(1.2) translateY(0) rotate(0deg); }
         }
         
         .progress-custom { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 5px; }
@@ -431,11 +444,15 @@ function renderLeaderboard(userList, timeKey) { %>
                 <div class="col-6 col-md-3 col-lg-2">
                     <div class="rank-card p-3 h-100 d-flex flex-column align-items-center" style="--hover-color: <%= r.color %>;">
                         <img src="/images/ranks/<%= r.img %>" class="rank-icon-roadmap">
-                        <div class="rank-name-bright" style="color: <%= r.color %>; font-size: 0.75rem; line-height: 1.2;"><%= r.name %></div>
-                        <div class="mt-1 small opacity-50" style="font-size: 0.65rem;"><%= formatFullTime(r.min) %></div>
+                        <div class="rank-name-bright" style="color: <%= r.color %>; font-size: 0.75rem; line-height: 1.2;">
+                            <%= r.name %>
+                        </div>
+                        <div class="mt-1 small opacity-50" style="font-size: 0.65rem;">
+                            <%= formatFullTime(r.min) %>
+                        </div>
                     </div>
                 </div>
-            <% }) %>
+                <% }) %>
         </div>
     </div>
 </div>
