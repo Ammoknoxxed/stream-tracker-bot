@@ -525,34 +525,31 @@ setInterval(async () => {
 client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
 
-    // WICHTIG: Hier muss "async () =>" stehen, damit await darin funktioniert!
     setTimeout(async () => {
         try {
             log('🔄 Starte Initialisierungs-Scan...');
 
             // 1. DATENBANK BEREINIGEN
+            // Wir setzen alle auf false UND löschen das Start-Datum, 
+            // damit keine alten Differenzen berechnet werden.
             const resetResult = await StreamUser.updateMany(
-                { isStreaming: true }, 
+                {}, 
                 { isStreaming: false, lastStreamStart: null }
             );
-            log(`🧹 Geister-Streams in DB bereinigt: ${resetResult.modifiedCount}`);
+            log(`🧹 Datenbank bereinigt: ${resetResult.modifiedCount} Profile zurückgesetzt.`);
 
             // 2. AKTIVER SCAN: WER STREAMT JETZT?
             let activeFound = 0;
             
             for (const guild of client.guilds.cache.values()) {
-                log(`📡 Scanne Server: ${guild.name}...`);
-                
-                // Mitglieder erzwingen zu laden (Caching-Fix)
-                await guild.members.fetch().catch(() => log(`⚠️ Konnte Member für ${guild.name} nicht laden.`));
+                // Mitglieder laden
+                await guild.members.fetch().catch(() => {});
                 
                 const config = await GuildConfig.findOne({ guildId: guild.id });
                 const voiceChannels = guild.channels.cache.filter(c => c.type === 2);
 
                 for (const channel of voiceChannels.values()) {
                     const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
-                    
-                    // Nur echte User zählen (keine Bots)
                     const humansInChannel = channel.members.filter(m => !m.user.bot);
                     const hasViewers = humansInChannel.size >= 2;
 
@@ -560,7 +557,8 @@ client.once('ready', async () => {
                         for (const member of humansInChannel.values()) {
                             if (member.voice.streaming) {
                                 activeFound++;
-                                log(`✨ Streamer beim Start gefunden: ${member.user.username}`);
+                                // Wir loggen den neuen Startpunkt
+                                log(`✨ Streamer beim Start neu erfasst: ${member.user.username}`);
                                 await handleStreamStart(
                                     member.id, 
                                     guild.id, 
@@ -572,20 +570,19 @@ client.once('ready', async () => {
                     }
                 }
             }
-            log(`✅ Scan beendet: ${activeFound} aktive Streamer gefunden.`);
+            log(`✅ Scan beendet: ${activeFound} aktive Streamer neu gestartet.`);
 
             // 3. INITIALER ROLLEN-CHECK
-            log('🔍 Starte initialen Rollen-Abgleich...');
             const allUsers = await StreamUser.find({});
             for (const userData of allUsers) {
                 await syncUserRoles(userData);
             }
-            log(`🎊 Start-Vorgang vollständig abgeschlossen. ${allUsers.length} Profile geprüft.`);
+            log(`🎊 Start-Vorgang abgeschlossen.`);
 
         } catch (err) {
             log(`❌ Fehler im Start-Ablauf: ${err.message}`);
         }
-    }, 5000); // 5 Sekunden warten, bis alles bereit ist
+    }, 5000); 
 });
 
 // Datenbank-Verbindung
@@ -601,6 +598,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
