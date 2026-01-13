@@ -197,6 +197,39 @@
             90% { opacity: 0.3; }
             100% { transform: translateY(-20vh) translateX(100px) rotate(360deg); opacity: 0; }
         }
+
+/* --- NEUE SUCHFUNKTION STYLE --- */
+        .search-wrapper {
+            position: relative;
+            max-width: 250px;
+            margin: 0 0 15px auto; /* Rechtsbündig */
+        }
+        .search-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 6px 15px 6px 35px;
+            color: white;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        .search-input:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+        }
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.7rem;
+            color: var(--accent);
+            opacity: 0.6;
+        }
+        .d-none-search { display: none !important; }
     </style>
 </head>
 <body>
@@ -276,11 +309,17 @@ function renderLeaderboard(userList, timeKey) { %>
             </div>
         <% }) %>
     </div>
+</div>
     <% } %>
+
+    <div class="search-wrapper">
+        <i class="fas fa-search search-icon"></i>
+        <input type="text" id="userSearch" class="search-input" placeholder="User suchen...">
+    </div>
 
     <div class="glass-card overflow-hidden">
         <div class="scroll-container">
-            <table class="table table-hover align-middle mb-0 text-white">
+            <table class="table table-hover align-middle mb-0 text-white" id="leaderboardTable">
                 <thead class="sticky-thead bg-black">
                     <tr>
                         <th class="ps-4 py-3">#</th>
@@ -376,7 +415,7 @@ function renderLeaderboard(userList, timeKey) { %>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Diese Funktion startet erst, wenn das HTML fertig geladen ist
+// Diese Funktion startet erst, wenn das HTML fertig geladen ist
     document.addEventListener('DOMContentLoaded', function () {
         
         // 1. Tooltips aktivieren
@@ -384,6 +423,29 @@ function renderLeaderboard(userList, timeKey) { %>
         const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, {
             delay: { "show": 100, "hide": 100 }
         }));
+
+        // --- NEU: Suchfunktion Logik ---
+        const searchInput = document.getElementById('userSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase();
+                // Findet alle Zeilen in der Tabelle
+                const tableRows = document.querySelectorAll('#leaderboardTable tbody tr');
+
+                tableRows.forEach(row => {
+                    // Sucht den Usernamen in der aktuellen Zeile
+                    const usernameEl = row.querySelector('.username-bright');
+                    if (usernameEl) {
+                        const username = usernameEl.innerText.toLowerCase();
+                        if (username.includes(searchTerm)) {
+                            row.classList.remove('d-none-search');
+                        } else {
+                            row.classList.add('d-none-search');
+                        }
+                    }
+                });
+            });
+        }
 
         // 2. Partikel und Live-Timer initialisieren
         createParticles(); 
