@@ -394,7 +394,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(newState.channelId);
     
     // Prüfen, ob Zuschauer da sind (Zuschauer-Zahl ohne Bots)
-    const hasViewers = newState.channel && newState.channel.members.filter(m => !m.user.bot).size > 1;
+    const hasViewers = newState.channel && newState.channel.members.filter(m => !m.user.bot).size >= 2;
 
     // Logik: User muss im Channel sein, streamen, im erlaubten Channel sein und Zuschauer haben
     if (newState.channel && newState.streaming && isAllowed && hasViewers) {
@@ -506,7 +506,7 @@ client.once('ready', async () => {
                     
                     // Nur echte User zählen (keine Bots)
                     const humansInChannel = channel.members.filter(m => !m.user.bot);
-                    const hasViewers = humansInChannel.size > 1;
+                    const hasViewers = humansInChannel.size >= 2;
 
                     if (isAllowed && hasViewers) {
                         for (const member of humansInChannel.values()) {
@@ -553,3 +553,4 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
