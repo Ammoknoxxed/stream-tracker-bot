@@ -456,8 +456,8 @@ setInterval(async () => {
     const allUsers = await StreamUser.find({});
     const statusChannelId = '1459882167848145073'; 
 
-    // Optional: Kurzes Log, dass der Check läuft
-    // log(`🔍 SYSTEM-CHECK: Prüfe Status für ${allUsers.length} Profile...`);
+    // ✅ LOG AKTIVIERT - Damit siehst du sofort, wenn der Scan startet
+    log(`🔍 SYSTEM-CHECK: Starte Routine-Scan für ${allUsers.length} Profile.`);
 
     for (const userData of allUsers) {
         try {
@@ -466,14 +466,15 @@ setInterval(async () => {
                 const guild = client.guilds.cache.get(userData.guildId);
                 const member = await guild?.members.fetch(userData.userId).catch(() => null);
                 
+                // Wenn der User laut DB streamt, aber Discord sagt: Nein (oder nicht mehr im Voice)
                 if (!member || !member.voice.channel || !member.voice.streaming) {
-                    log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} beendet.`);
+                    log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} beendet (Discord Status inaktiv).`);
                     await handleStreamStop(userData.userId, userData.guildId);
                     continue; 
                 }
             }
 
-            // 2. ROLLEN-UPDATE (Loggt jetzt automatisch über die Funktion oben)
+            // 2. ROLLEN-UPDATE
             await syncUserRoles(userData, now);
 
             // 3. LEVEL-UP BERECHNUNG
@@ -490,6 +491,7 @@ setInterval(async () => {
                 const oldRankIndex = ranks.findIndex(r => r.name === userData.lastNotifiedRank);
                 const currentRankIndex = ranks.findIndex(r => r.name === currentRank.name);
 
+                // Prüfen, ob der neue Rang-Index kleiner ist (da 0 = GOD OF MAX WIN der höchste ist)
                 if (oldRankIndex === -1 || currentRankIndex < oldRankIndex) {
                     const channel = await client.channels.fetch(statusChannelId).catch(() => null);
                     if (channel) {
@@ -518,6 +520,7 @@ setInterval(async () => {
             log(`❌ FEHLER im Intervall bei User ${userData.username}: ${err.message}`); 
         }
     }
+    log(`✅ SYSTEM-CHECK: Scan abgeschlossen.`);
 }, 5 * 60000);
 
 // --- BOT START & VERBINDUNGEN ---
@@ -598,6 +601,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
