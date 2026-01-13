@@ -46,11 +46,12 @@
         .leaderboard-container { max-width: 1000px; margin: 40px auto; }
         
         .glass-card {
-            background: var(--bg-card) !important;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 10, 15, 0.85) 100%) !important;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
             border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1);
         }
 
         .username-bright {
@@ -121,9 +122,16 @@
         .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; border-bottom: 2px solid rgba(251, 191, 36, 0.2); }
         .text-accent { color: var(--accent) !important; }
         .opacity-50 { opacity: 0.7 !important; }
+
+        /* Highlights für die ersten drei Plätze innerhalb der Tabellenliste */
+        tr:nth-child(1) .opacity-50 { color: #fbbf24 !important; opacity: 1 !important; font-weight: bold; } /* Gold */
+        tr:nth-child(2) .opacity-50 { color: #e5e7eb !important; opacity: 1 !important; font-weight: bold; } /* Silber */
+        tr:nth-child(3) .opacity-50 { color: #d97706 !important; opacity: 1 !important; font-weight: bold; } /* Bronze */
+
         .progress-bar-glow {
-    animation: progress-pulse 1.5s infinite;
+            animation: progress-pulse 1.5s infinite;
 }
+
 @keyframes progress-pulse {
     0% { box-shadow: 0 0 5px var(--accent); filter: brightness(1); }
     50% { box-shadow: 0 0 15px var(--accent); filter: brightness(1.3); }
