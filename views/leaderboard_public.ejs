@@ -297,7 +297,7 @@ function renderLeaderboard(userList, timeKey) { %>
                     <img src="/images/ranks/<%= info.current.img %>" class="rank-badge-podium">
                 </div>
 
-                <h4 class="mb-0 text-truncate username-bright"><%= user.displayName || user.username %></h4>
+                <h4 class="mb-0 text-truncate username-bright"><%= user.nickname || user.displayName || user.username %></h4>
                 <div class="opacity-50 mb-2" style="font-size: 0.7rem; font-weight: 400; line-height: 1;">@<%= user.username %></div>
 
                 <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;">
@@ -348,7 +348,7 @@ function renderLeaderboard(userList, timeKey) { %>
                             <div class="flex-grow-1" style="max-width: 280px;">
                                 <div class="d-flex align-items-center mb-1">
                                     <div class="d-flex flex-column">
-                                        <span class="username-bright leading-tight"><%= user.displayName || user.username %></span>
+                                        <span class="username-bright leading-tight"><%= user.nickname || user.displayName || user.username %></span>
                                         <span class="opacity-50" style="font-size: 0.65rem; font-weight: 400; margin-top: -2px;">@<%= user.username %></span>
                                     </div>
                                     <% if(user.isStreaming) { %>
