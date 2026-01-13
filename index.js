@@ -112,8 +112,10 @@ async function syncUserRoles(userData, now = new Date()) {
         }
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards || config.rewards.length === 0) return false;
+        
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) return false;
+        
         const member = await guild.members.fetch(userData.userId).catch(() => null);
         if (!member) return false;
 
@@ -125,17 +127,25 @@ async function syncUserRoles(userData, now = new Date()) {
         const allRewardRoleIds = config.rewards.map(r => r.roleId);
 
         if (topReward) {
+            // Logge, wenn eine NEUE Rolle hinzugefügt wird
             if (!member.roles.cache.has(topReward.roleId)) {
                 await member.roles.add(topReward.roleId).catch(() => {});
+                log(`🛡️ ROLLEN-UPDATE: + Rolle "${topReward.roleName}" für ${userData.username} hinzugefügt.`);
             }
-            for (const roleId of allRewardRoleIds) {
-                if (roleId !== topReward.roleId && member.roles.cache.has(roleId)) {
-                    await member.roles.remove(roleId).catch(() => {});
+            
+            // Logge, wenn ALTE Belohnungs-Rollen entfernt werden (Cleanup)
+            for (const reward of config.rewards) {
+                if (reward.roleId !== topReward.roleId && member.roles.cache.has(reward.roleId)) {
+                    await member.roles.remove(reward.roleId).catch(() => {});
+                    log(`🛡️ ROLLEN-UPDATE: - Veraltete Rolle "${reward.roleName}" von ${userData.username} entfernt.`);
                 }
             }
         }
         return true;
-    } catch (err) { return false; }
+    } catch (err) { 
+        log(`❌ FEHLER bei syncUserRoles für ${userData.username}: ${err.message}`);
+        return false; 
+    }
 }
 
 // --- EXPRESS / DASHBOARD SETUP ---
@@ -571,5 +581,6 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
