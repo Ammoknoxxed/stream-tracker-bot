@@ -123,14 +123,16 @@
         .text-accent { color: var(--accent) !important; }
         .opacity-50 { opacity: 0.7 !important; }
 
-        /* Highlights für die ersten drei Plätze innerhalb der Tabellenliste */
-        tr:nth-child(1) .opacity-50 { color: #fbbf24 !important; opacity: 1 !important; font-weight: bold; } /* Gold */
-        tr:nth-child(2) .opacity-50 { color: #e5e7eb !important; opacity: 1 !important; font-weight: bold; } /* Silber */
-        tr:nth-child(3) .opacity-50 { color: #d97706 !important; opacity: 1 !important; font-weight: bold; } /* Bronze */
+        /* Alle Platznummern in der Tabelle (#4, #5 etc.) einheitlich im Marken-Gelb */
+        .scroll-container td.opacity-50 { 
+            color: var(--accent) !important; 
+            opacity: 1 !important; 
+            font-weight: bold; 
+        }
 
         .progress-bar-glow {
             animation: progress-pulse 1.5s infinite;
-}
+        }
 
 @keyframes progress-pulse {
     0% { box-shadow: 0 0 5px var(--accent); filter: brightness(1); }
@@ -213,7 +215,7 @@ function renderLeaderboard(userList, timeKey) { %>
                 <div class="text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
                     <%= formatFullTime(user[timeKey]) %>
                 </div>
-                <div class="small opacity-50 mt-1">Platz <%= index + 1 %></div>
+                <div class="small mt-1 fw-bold" style="color: <%= info.current.color %>; filter: brightness(1.2);">Platz <%= index + 1 %></div>
             </div>
         <% }) %>
     </div>
