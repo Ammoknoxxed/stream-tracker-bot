@@ -1,28 +1,91 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <link rel="stylesheet" href="/style.css">
     <meta charset="UTF-8">
-    <title>Deine Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serverwahl</title>
     <style>
-        body { font-family: sans-serif; background: #23272a; color: white; padding: 20px; }
-        .guild-card { background: #2c2f33; padding: 15px; margin: 10px; border-radius: 8px; display: inline-block; width: 250px; }
-        .btn { background: #43b581; color: white; padding: 8px 12px; text-decoration: none; border-radius: 4px; }
+        :root {
+            --bg-color: #0b0e11;
+            --card-bg: #15191d;
+            --accent-blue: #00d2ff;
+            --danger: #f04747;
+        }
+
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: var(--bg-color); 
+            color: #dcddde; 
+            margin: 0;
+            padding: 40px;
+            cursor: default; /* Normaler Cursor */
+        }
+
+        h1 { color: white; border-bottom: 2px solid var(--accent-blue); padding-bottom: 10px; }
+        .welcome-text { margin-bottom: 30px; color: #8e9297; }
+
+        .guild-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .guild-card { 
+            background: var(--card-bg); 
+            padding: 20px; 
+            border-radius: 12px; 
+            border: 1px solid #23272a;
+            text-align: center;
+            transition: 0.2s;
+        }
+
+        .guild-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        .guild-icon {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            margin-bottom: 15px;
+            border: 2px solid var(--accent-blue);
+        }
+
+        .btn { 
+            display: inline-block;
+            background: var(--accent-blue); 
+            color: white; 
+            padding: 10px 20px; 
+            text-decoration: none; 
+            border-radius: 6px; 
+            font-weight: bold;
+        }
+
+        .logout-link {
+            display: inline-block; margin-top: 40px;
+            color: var(--danger); text-decoration: none;
+            padding: 10px; border: 1px solid var(--danger); border-radius: 6px;
+        }
     </style>
 </head>
 <body>
-    <h1>Hallo, <%= user.username %>!</h1>
-    <p>Wähle einen Server aus, um ihn zu konfigurieren:</p>
-    <div id="guilds">
+    <h1>🎰 Willkommen, <%= user.username %>!</h1>
+    <p class="welcome-text">Wähle einen Server zum Konfigurieren:</p>
+
+    <div class="guild-container">
         <% guilds.forEach(guild => { %>
             <div class="guild-card">
-                <h3><%= guild.name %></h3>
+                <% if (guild.icon) { %>
+                    <img class="guild-icon" src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png">
+                <% } else { %>
+                    <div class="guild-icon" style="display:flex; align-items:center; justify-content:center; margin:auto; font-size:2em;"><%= guild.name.charAt(0) %></div>
+                <% } %>
+                <div style="color:white; font-weight:bold; margin-bottom:15px;"><%= guild.name %></div>
                 <a href="/dashboard/<%= guild.id %>" class="btn">Einstellungen</a>
             </div>
         <% }) %>
     </div>
-    <br>
-    <a href="/logout" style="color: #f04747;">Logout</a>
+    <a href="/logout" class="logout-link">Abmelden</a>
 </body>
-
 </html>
