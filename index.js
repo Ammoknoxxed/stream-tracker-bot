@@ -186,11 +186,27 @@ app.get('/leaderboard/:guildId', async (req, res) => {
 });
 
 app.get('/login', passport.authenticate('discord'));
-app.get('/auth/discord/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => res.redirect('/dashboard'));
+
+app.get('/auth/discord/callback', 
+    passport.authenticate('discord', { failureRedirect: '/' }), 
+    (req, res) => {
+        // Logge den erfolgreichen Login
+        if (req.user) {
+            log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
+        }
+        res.redirect('/dashboard');
+    }
+);
 
 app.get('/dashboard', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
+    
+    // Filtert alle Server, auf denen der User Administrator (0x8) ist
     const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
+    
+    // Optional: Logge den Zugriff auf die Dashboard-Übersicht
+    log(`🖥️ DASHBOARD: ${req.user.username} ruft die Server-Übersicht auf.`);
+    
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
@@ -413,21 +429,20 @@ setInterval(async () => {
 
     for (const userData of allUsers) {
         try {
-            // --- NEU: ANTI-GEISTER-PRÜFUNG ---
+            // 1. ANTI-GEISTER-PRÜFUNG
             if (userData.isStreaming) {
                 const guild = client.guilds.cache.get(userData.guildId);
                 const member = await guild?.members.fetch(userData.userId).catch(() => null);
                 
-                // Falls der User nicht mehr im Voice ist, den Stream nicht mehr an hat oder den Server verlassen hat
                 if (!member || !member.voice.channel || !member.voice.streaming) {
                     log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} korrigiert.`);
                     await handleStreamStop(userData.userId, userData.guildId);
-                    // Wir springen zum nächsten User, da dieser Stream gerade beendet wurde
                     continue; 
                 }
             }
 
-            // --- BESTEHEND: ROLLEN & LEVEL-UP LOGIK ---
+            // 2. ROLLEN & LEVEL-UP LOGIK
+            // HIER werden jetzt durch die neue syncUserRoles-Funktion die Rollen-Logs (🛡️) ausgegeben
             await syncUserRoles(userData, now);
 
             let totalMins = userData.totalMinutes;
@@ -438,10 +453,12 @@ setInterval(async () => {
 
             const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
 
+            // 3. BENACHRICHTIGUNG BEI RANG-AUFSTIEG
             if (userData.lastNotifiedRank !== currentRank.name) {
                 const oldRankIndex = ranks.findIndex(r => r.name === userData.lastNotifiedRank);
                 const currentRankIndex = ranks.findIndex(r => r.name === currentRank.name);
 
+                // Prüfen, ob es ein Aufstieg ist (Index wird kleiner, da GOD OF MAX WIN oben steht)
                 if (oldRankIndex === -1 || currentRankIndex < oldRankIndex) {
                     const channel = await client.channels.fetch(statusChannelId).catch(() => null);
                     if (channel) {
@@ -460,6 +477,7 @@ setInterval(async () => {
                             .setTimestamp();
 
                         await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
+                        // Dein bestehendes Log:
                         log(`⭐ LEVEL UP: ${userData.username} hat den Rang ${currentRank.name} erreicht!`);
                     }
                 }
@@ -553,4 +571,5 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
