@@ -345,12 +345,30 @@ client.on('messageCreate', async (message) => {
         const stats = getSortedUsers(userData ? [userData] : [])[0] || { effectiveTotal: 0 };
         const totalMins = stats.effectiveTotal;
 
+        const displayName = message.member ? message.member.displayName : message.author.username;
+
+        // --- NEU: PRÜFUNG AUF 0 MINUTEN ---
+        if (totalMins === 0) {
+            const noRankEmbed = new EmbedBuilder()
+                .setAuthor({ name: `Status für ${displayName}`, iconURL: message.author.displayAvatarURL() })
+                .setTitle('🎰 Noch kein Rang verfügbar')
+                .setColor('#ff4747') // Ein kräftiges Rot
+                .setThumbnail(message.author.displayAvatarURL())
+                .setDescription('Du hast bisher noch keine Zeit auf dem Konto. Starte einen Stream mit Zuschauern, um deinen ersten Rang freizuschalten!')
+                .addFields(
+                    { name: '⌛ Gesamtzeit', value: '`0h 0m`', inline: true },
+                    { name: '🏆 Rang', value: 'Keiner', inline: true }
+                )
+                .setFooter({ text: 'Lass die Walzen glühen! 🎰', iconURL: client.user.displayAvatarURL() })
+                .setTimestamp();
+
+            return message.channel.send({ embeds: [noRankEmbed] });
+        }
+        // ----------------------------------
+
         const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
         const nextRankIndex = ranks.indexOf(currentRank) - 1;
         const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
-
-        // Hier nutzen wir auch den Nickname für die Anzeige
-        const displayName = message.member ? message.member.displayName : message.author.username;
 
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Juicer Status für ${displayName}`, iconURL: message.author.displayAvatarURL() })
@@ -583,6 +601,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
