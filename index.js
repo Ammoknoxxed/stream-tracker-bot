@@ -61,7 +61,7 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMembers, // WICHTIG für Nicknames
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages
@@ -81,6 +81,26 @@ function getSortedUsers(users) {
         }
         return u;
     }).sort((a, b) => b.effectiveTotal - a.effectiveTotal);
+}
+
+// NEU: Diese Funktion holt die Server-Nicknames live von Discord
+async function enrichUserData(guild, sortedUsers) {
+    return await Promise.all(sortedUsers.map(async (u) => {
+        try {
+            // Wir versuchen, das Mitglied vom Server zu laden
+            const member = await guild.members.fetch(u.userId).catch(() => null);
+            return {
+                ...u,
+                // Hier holen wir den Server-Namen (Peter), falls vorhanden, sonst den Usernamen (auchgut)
+                displayName: member ? member.displayName : u.username, 
+                // Avatar live aktualisieren (falls er sich geändert hat)
+                avatar: member ? member.displayAvatarURL() : u.avatar
+            };
+        } catch (e) {
+            // Fallback, falls der Fetch fehlschlägt
+            return { ...u, displayName: u.username };
+        }
+    }));
 }
 
 async function syncUserRoles(userData, now = new Date()) {
@@ -146,9 +166,23 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         const guildId = req.params.guildId;
         const guild = client.guilds.cache.get(guildId);
         if (!guild) return res.status(404).send("Server nicht gefunden.");
+        
         const users = await StreamUser.find({ guildId });
-        res.render('leaderboard_public', { guild, allTimeLeaderboard: getSortedUsers(users), monthName: "Gesamtstatistik", ranks });
-    } catch (err) { res.status(500).send("Fehler."); }
+        const sortedUsers = getSortedUsers(users);
+        
+        // HIER WIRD DER NICKNAME GELADEN
+        const enrichedUsers = await enrichUserData(guild, sortedUsers);
+
+        res.render('leaderboard_public', { 
+            guild, 
+            allTimeLeaderboard: enrichedUsers, // Wir senden die Liste mit Nicknames
+            monthName: "Gesamtstatistik", 
+            ranks 
+        });
+    } catch (err) { 
+        console.error(err);
+        res.status(500).send("Fehler."); 
+    }
 });
 
 app.get('/login', passport.authenticate('discord'));
@@ -165,10 +199,23 @@ app.get('/dashboard/:guildId', async (req, res) => {
     const guild = client.guilds.cache.get(req.params.guildId);
     if (!guild) return res.send("Bot nicht auf Server.");
     let config = await GuildConfig.findOne({ guildId: guild.id }) || await GuildConfig.create({ guildId: guild.id });
+    
     const users = await StreamUser.find({ guildId: guild.id });
+    const sortedUsers = getSortedUsers(users);
+
+    // HIER WIRD AUCH IM DASHBOARD DER NICKNAME GELADEN
+    const enrichedUsers = await enrichUserData(guild, sortedUsers);
+
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
     const channels = guild.channels.cache.filter(c => [2, 4].includes(c.type)).map(c => ({ id: c.id, name: c.name }));
-    res.render('settings', { guild, config, trackedUsers: getSortedUsers(users), roles, channels });
+    
+    res.render('settings', { 
+        guild, 
+        config, 
+        trackedUsers: enrichedUsers, // Wir senden die Liste mit Nicknames
+        roles, 
+        channels 
+    });
 });
 
 // --- DASHBOARD ACTIONS ---
@@ -275,8 +322,11 @@ client.on('messageCreate', async (message) => {
         const nextRankIndex = ranks.indexOf(currentRank) - 1;
         const nextRank = nextRankIndex >= 0 ? ranks[nextRankIndex] : null;
 
+        // Hier nutzen wir auch den Nickname für die Anzeige
+        const displayName = message.member ? message.member.displayName : message.author.username;
+
         const embed = new EmbedBuilder()
-            .setAuthor({ name: `Juicer Status für ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
+            .setAuthor({ name: `Juicer Status für ${displayName}`, iconURL: message.author.displayAvatarURL() })
             .setTitle(`🎰 ${currentRank.name}`)
             .setColor(currentRank.color)
             .setThumbnail(message.author.displayAvatarURL())
