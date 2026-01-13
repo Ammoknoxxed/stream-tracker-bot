@@ -354,7 +354,7 @@ client.on('messageCreate', async (message) => {
                 .setTitle('🎰 Noch kein Rang verfügbar')
                 .setColor('#ff4747') // Ein kräftiges Rot
                 .setThumbnail(message.author.displayAvatarURL())
-                .setDescription('Du hast bisher noch keine Zeit auf dem Konto. Starte einen Stream mit Zuschauern, um deinen ersten Rang freizuschalten! - [Hier findest du die Ranking Regeln:](https://discord.com/channels/1459852467591450684/1459882167848145073/1459852506191630358)')
+                .setDescription('Du hast bisher noch keine Zeit auf dem Konto. Starte einen Stream mit Zuschauern, um deinen ersten Rang freizuschalten! :point_right: [Hier findest du die Ranking Regeln](https://discord.com/channels/1459852467591450684/1459882167848145073/1459852506191630358) :point_left:')
                 .addFields(
                     { name: '⌛ Gesamtzeit', value: '`0h 0m`', inline: true },
                     { name: '🏆 Rang', value: 'Keiner', inline: true }
@@ -598,6 +598,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
