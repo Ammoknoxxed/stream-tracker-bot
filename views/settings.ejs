@@ -8,64 +8,95 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/style.css">
     <style>
+        :root {
+            --accent-blue: #00d2ff;
+            --gold: #ffb900;
+            --bg-dark: #0b0e11;
+        }
+        body { background-color: var(--bg-dark); color: white; }
+        .glass-card { 
+            background: rgba(21, 25, 29, 0.8); 
+            backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255,255,255,0.05); 
+            border-radius: 15px;
+        }
+        .text-accent { color: var(--accent-blue) !important; }
         .live-timer-active { color: #ff4757 !important; text-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
         .pulse-live { animation: pulse-red 2s infinite; }
-        @keyframes pulse-red {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .rank-gold { color: var(--gold); }
+        .rank-silver { color: #bdc3c7; }
+        .rank-bronze { color: #cd7f32; }
+
+        .search-input {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            border-radius: 20px;
+            padding: 5px 15px;
+        }
+        .search-input:focus {
+            background: rgba(0,0,0,0.3);
+            color: white;
+            border-color: var(--accent-blue);
+            box-shadow: none;
         }
         .adjust-input {
-            width: 70px;
-            background: rgba(0,0,0,0.3);
+            width: 75px;
+            background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
             color: white;
             border-radius: 4px;
             padding: 2px 5px;
-            font-size: 0.85rem;
+            text-align: center;
         }
-        .btn-adjust {
-            background: #fbbf24;
+        .btn-cyber {
+            background: var(--accent-blue);
             color: black;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 0.75rem;
             font-weight: bold;
-            transition: 0.2s;
+            border: none;
+            transition: 0.3s;
         }
-        .btn-adjust:hover { background: #f59e0b; }
+        .btn-cyber:hover {
+            background: white;
+            box-shadow: 0 0 15px var(--accent-blue);
+        }
     </style>
 </head>
 <body>
 
 <div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-5 glass-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 glass-card p-4">
         <div class="d-flex align-items-center">
             <% if(guild.icon) { %>
-                <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="rounded-circle me-3" style="width: 50px;">
+                <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="rounded-circle me-3" style="width: 55px; border: 2px solid var(--accent-blue);">
             <% } %>
-            <h1 class="h3 mb-0"><%= guild.name %> <span class="text-accent small">Dashboard</span></h1>
+            <div>
+                <h1 class="h3 mb-0 text-white"><%= guild.name %></h1>
+                <span class="text-accent small"><i class="fas fa-cog fa-spin me-1"></i> Management Dashboard</span>
+            </div>
         </div>
-        <a href="/dashboard" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i> Zurück</a>
+        <a href="/dashboard" class="btn btn-outline-light btn-sm px-3 rounded-pill"><i class="fas fa-arrow-left me-1"></i> Serverliste</a>
     </div>
 
     <div class="row">
         <div class="col-lg-8 mb-4">
-            <div class="glass-card h-100">
-                <div class="p-4 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-trophy text-accent me-2"></i> Stream-Leaderboard</h5>
-                    <span class="badge bg-dark"><%= trackedUsers.length %> User getrackt</span>
+            <div class="glass-card h-100 overflow-hidden">
+                <div class="p-4 border-bottom border-secondary d-flex justify-content-between align-items-center bg-white bg-opacity-5">
+                    <h5 class="mb-0"><i class="fas fa-users text-accent me-2"></i> User-Verwaltung</h5>
+                    <input type="text" id="userSearch" class="form-control form-control-sm search-input w-auto" placeholder="User suchen...">
                 </div>
+                
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead>
+                    <table class="table table-dark table-hover align-middle mb-0" id="userTable">
+                        <thead class="bg-transparent">
                             <tr>
-                                <th class="ps-4">Rank</th>
-                                <th>User</th>
-                                <th>Minuten</th>
-                                <th>Zeit anpassen (+/-)</th>
-                                <th class="text-end pe-4">Aktion</th>
+                                <th class="ps-4 border-0">Rank</th>
+                                <th class="border-0">Mitglied</th>
+                                <th class="border-0 text-center">Zeit</th>
+                                <th class="border-0 text-center">Anpassung</th>
+                                <th class="text-end pe-4 border-0">Aktion</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -76,51 +107,52 @@
                                     displayMinutes += sessionMins;
                                 }
                             %>
-                            <tr>
+                            <tr class="user-row">
                                 <td class="ps-4">
-                                    <% if(index === 0) { %><i class="fas fa-crown rank-gold"></i>
-                                    <% } else if(index === 1) { %><i class="fas fa-medal rank-silver"></i>
-                                    <% } else if(index === 2) { %><i class="fas fa-medal rank-bronze"></i>
-                                    <% } else { %><span class="opacity-50 ms-1">#<%= index + 1 %></span><% } %>
-                                </td>
-                                <td class="d-flex align-items-center">
-                                    <div class="position-relative me-3">
-                                        <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
-                                             style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" 
-                                             class="border border-2 <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
-                                        <% if(user.isStreaming) { %>
-                                            <span class="position-absolute translate-middle badge rounded-pill bg-danger pulse-live" 
-                                                  style="font-size: 0.5rem; bottom: -12px; left: 20px; border: 2px solid var(--bg-dark);">LIVE</span>
-                                        <% } %>
-                                    </div>
-                                    <span class="fw-bold"><%= user.username %></span>
+                                    <% if(index === 0) { %><i class="fas fa-crown rank-gold fs-5"></i>
+                                    <% } else if(index === 1) { %><i class="fas fa-medal rank-silver fs-5"></i>
+                                    <% } else if(index === 2) { %><i class="fas fa-medal rank-bronze fs-5"></i>
+                                    <% } else { %><span class="opacity-50">#<%= index + 1 %></span><% } %>
                                 </td>
                                 <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="position-relative me-3">
+                                            <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                                                 style="width: 38px; height: 38px; border-radius: 50%;" 
+                                                 class="border border-2 <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
+                                            <% if(user.isStreaming) { %>
+                                                <span class="position-absolute bottom-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle pulse-live"></span>
+                                            <% } %>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold username-text"><%= user.username %></div>
+                                            <% if(user.isStreaming) { %><span class="text-danger small fw-bold">LIVE</span><% } %>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-center">
                                     <span class="text-accent fw-bold live-timer-container <%= user.isStreaming ? 'live-timer-active' : '' %>"
                                           data-base="<%= user.totalMinutes %>"
                                           data-start="<%= user.isStreaming && user.lastStreamStart ? user.lastStreamStart.toISOString() : 'null' %>">
                                         <%= displayMinutes %>
                                     </span> 
-                                    <span class="small opacity-50">Min</span>
+                                    <span class="small opacity-50">min</span>
                                 </td>
-                                <td>
-                                    <form action="/dashboard/<%= guild.id %>/adjust-time" method="POST" class="d-flex gap-1 align-items-center">
+                                <td class="text-center">
+                                    <form action="/dashboard/<%= guild.id %>/adjust-time" method="POST" class="d-inline-flex justify-content-center">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
-                                        <input type="number" name="minutes" class="adjust-input" placeholder="+/- Min" required>
-                                        <button type="submit" class="btn-adjust">OK</button>
+                                        <input type="number" name="minutes" class="adjust-input me-1" placeholder="min" required>
+                                        <button type="submit" class="btn btn-sm btn-warning py-0" title="Zeit anpassen"><i class="fas fa-check"></i></button>
                                     </form>
                                 </td>
                                 <td class="text-end pe-4">
                                     <form action="/dashboard/<%= guild.id %>/delete-user" method="POST" onsubmit="return confirm('Statistik wirklich löschen?')">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
-                                        <button class="btn btn-link text-danger p-0"><i class="fas fa-trash-alt"></i></button>
+                                        <button class="btn btn-link text-danger p-0" title="User löschen"><i class="fas fa-user-minus"></i></button>
                                     </form>
                                 </td>
                             </tr>
                             <% }) %>
-                            <% if(trackedUsers.length === 0) { %>
-                                <tr><td colspan="5" class="text-center py-5 opacity-50">Noch keine Daten vorhanden.</td></tr>
-                            <% } %>
                         </tbody>
                     </table>
                 </div>
@@ -129,26 +161,36 @@
 
         <div class="col-lg-4">
             <div class="glass-card p-4 mb-4">
-                <h5 class="mb-3 text-accent"><i class="fas fa-gift me-2"></i> Belohnungen</h5>
-                <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-4">
-                    <div class="input-group input-group-sm mb-2">
-                        <span class="input-group-text bg-dark text-white border-secondary">Min</span>
-                        <input type="number" name="minutes" class="form-control bg-transparent text-white border-secondary" placeholder="z.B. 60" required>
+                <h5 class="mb-3 text-accent d-flex justify-content-between">
+                    <span><i class="fas fa-gift me-2"></i> Belohnungen</span>
+                    <i class="fas fa-coins text-warning"></i>
+                </h5>
+                <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-4 p-3 bg-black bg-opacity-25 rounded shadow-sm">
+                    <div class="mb-2">
+                        <label class="small opacity-50 mb-1">Benötigte Zeit</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-dark text-white border-secondary"><i class="fas fa-clock"></i></span>
+                            <input type="number" name="minutes" class="form-control bg-transparent text-white border-secondary" placeholder="z.B. 60" required>
+                        </div>
                     </div>
-                    <select name="roleId" class="form-select form-select-sm bg-dark text-white border-secondary mb-2">
-                        <% roles.forEach(role => { %>
-                            <option value="<%= role.id %>">@<%= role.name %></option>
-                        <% }) %>
-                    </select>
-                    <button class="btn btn-cyber btn-sm w-100">Hinzufügen</button>
+                    <div class="mb-3">
+                        <label class="small opacity-50 mb-1">Discord Rolle</label>
+                        <select name="roleId" class="form-select form-select-sm bg-dark text-white border-secondary">
+                            <% roles.forEach(role => { %>
+                                <option value="<%= role.id %>">@<%= role.name %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <button class="btn btn-cyber btn-sm w-100 shadow-sm">Level-Rolle hinzufügen</button>
                 </form>
-                <div class="reward-list">
+
+                <div class="reward-list" style="max-height: 200px; overflow-y: auto;">
                     <% config.rewards.forEach((r, i) => { %>
-                        <div class="d-flex justify-content-between align-items-center p-2 mb-2 rounded bg-white bg-opacity-5 small">
-                            <span><i class="fas fa-check-circle text-success me-1"></i> <strong><%= r.minutesRequired %>m</strong> &rarr; @<%= r.roleName %></span>
+                        <div class="d-flex justify-content-between align-items-center p-2 mb-2 rounded bg-white bg-opacity-5 border-start border-3 border-accent">
+                            <span class="small"><strong><%= r.minutesRequired %>m</strong> &rarr; <span class="badge bg-primary opacity-75">@<%= r.roleName %></span></span>
                             <form action="/dashboard/<%= guild.id %>/delete-reward" method="POST">
                                 <input type="hidden" name="rewardIndex" value="<%= i %>">
-                                <button class="btn btn-link text-danger p-0 ms-2"><i class="fas fa-times-circle"></i></button>
+                                <button class="btn btn-link text-danger p-0 ms-2"><i class="fas fa-trash"></i></button>
                             </form>
                         </div>
                     <% }) %>
@@ -156,20 +198,20 @@
             </div>
 
             <div class="glass-card p-4">
-                <h5 class="mb-3 text-accent"><i class="fas fa-microphone-lines me-2"></i> Kanäle</h5>
+                <h5 class="mb-3 text-accent"><i class="fas fa-microphone-lines me-2"></i> Erlaubte Kanäle</h5>
                 <form action="/dashboard/<%= guild.id %>/save-channels" method="POST">
-                    <div class="channel-selector mb-3 p-2 bg-dark bg-opacity-50 rounded" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);">
+                    <div class="channel-selector mb-3 p-2 bg-black bg-opacity-25 rounded" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05);">
                         <% channels.forEach(ch => { %>
                             <div class="form-check small mb-1">
                                 <input class="form-check-input" type="checkbox" name="channels" value="<%= ch.id %>" id="ch-<%= ch.id %>"
                                 <%= config.allowedChannels.includes(ch.id) ? 'checked' : '' %>>
-                                <label class="form-check-label" for="ch-<%= ch.id %>">
+                                <label class="form-check-label opacity-75" for="ch-<%= ch.id %>">
                                     <%= ch.type === 4 ? '📁' : '🔊' %> <%= ch.name %>
                                 </label>
                             </div>
                         <% }) %>
                     </div>
-                    <button class="btn btn-cyber btn-sm w-100">Kanäle Speichern</button>
+                    <button class="btn btn-outline-info btn-sm w-100">Auswahl speichern</button>
                 </form>
             </div>
         </div>
@@ -177,6 +219,18 @@
 </div>
 
 <script>
+    // Echtzeit User-Suche
+    document.getElementById('userSearch').addEventListener('keyup', function() {
+        let filter = this.value.toLowerCase();
+        let rows = document.querySelectorAll('#userTable tbody tr');
+        
+        rows.forEach(row => {
+            let username = row.querySelector('.username-text').innerText.toLowerCase();
+            row.style.display = username.includes(filter) ? '' : 'none';
+        });
+    });
+
+    // Live Minuten Update
     function updateLiveMinutes() {
         const now = new Date();
         document.querySelectorAll('.live-timer-container').forEach(el => {
@@ -186,7 +240,6 @@
             if (startStr && startStr !== 'null') {
                 const startTime = new Date(startStr);
                 const diffMs = now - startTime;
-                
                 if (diffMs > 0) {
                     const sessionMinutes = Math.floor(diffMs / 60000);
                     el.innerText = baseMins + sessionMinutes;
