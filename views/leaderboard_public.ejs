@@ -320,7 +320,8 @@ function renderLeaderboard(userList, timeKey) { %>
         <% userList.slice(0, 3).forEach((user, index) => { 
             const info = getRankInfo(user[timeKey]);
         %>
-            <div class="podium-card podium-<%= index + 1 %> glass-card">
+            <div class="podium-card podium-<%= index + 1 %> glass-card" 
+                 title="<%= info.next ? 'Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis zum nächsten Rang' : 'Höchster Rang erreicht!' %>">
                 <% if(index === 0) { %>
                     <i class="fas fa-crown crown-icon" style="color: #fbbf24; text-shadow: 0 0 15px rgba(251, 191, 36, 0.6);"></i>
                 <% } else if(index === 1) { %>
@@ -363,7 +364,8 @@ function renderLeaderboard(userList, timeKey) { %>
                     <% userList.slice(3).forEach((user, index) => { 
                         const info = getRankInfo(user[timeKey]);
                     %>
-                    <tr class="border-bottom border-white border-opacity-10">
+                    <tr class="border-bottom border-white border-opacity-10" 
+                        title="<%= info.next ? 'Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis zum nächsten Rang' : 'Höchster Rang erreicht!' %>">
                         <td class="ps-4 opacity-50">#<%= index + 4 %></td>
                         <td class="d-flex align-items-center py-3">
                             <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
@@ -372,7 +374,9 @@ function renderLeaderboard(userList, timeKey) { %>
                             <div class="flex-grow-1" style="max-width: 280px;">
                                 <div class="d-flex align-items-center">
                                     <span class="username-bright me-2"><%= user.username %></span>
-                                    <% if(user.isStreaming) { %><span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span><% } %>
+                                    <% if(user.isStreaming) { %>
+                                        <span class="badge" style="background-color: #ff0055; font-size: 0.5rem;">LIVE</span>
+                                    <% } %>
                                 </div>
                                 <div class="d-flex align-items-center mt-1">
                                     <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
