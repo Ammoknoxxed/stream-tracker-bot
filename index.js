@@ -110,12 +110,13 @@ async function syncUserRoles(userData, now = new Date()) {
             const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
             if (currentDiff > 0) effectiveMinutes += currentDiff;
         }
+
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards || config.rewards.length === 0) return false;
-        
+
         const guild = client.guilds.cache.get(userData.guildId);
         if (!guild) return false;
-        
+
         const member = await guild.members.fetch(userData.userId).catch(() => null);
         if (!member) return false;
 
@@ -127,23 +128,23 @@ async function syncUserRoles(userData, now = new Date()) {
         const allRewardRoleIds = config.rewards.map(r => r.roleId);
 
         if (topReward) {
-            // Logge, wenn eine NEUE Rolle hinzugefügt wird
+            // Logge das Hinzufügen einer neuen Rolle
             if (!member.roles.cache.has(topReward.roleId)) {
                 await member.roles.add(topReward.roleId).catch(() => {});
-                log(`🛡️ ROLLEN-UPDATE: + Rolle "${topReward.roleName}" für ${userData.username} hinzugefügt.`);
+                log(`🛡️ ROLLEN-UPDATE: + "${topReward.roleName}" für ${userData.username} hinzugefügt.`);
             }
-            
-            // Logge, wenn ALTE Belohnungs-Rollen entfernt werden (Cleanup)
+
+            // Logge das Entfernen veralteter Rollen
             for (const reward of config.rewards) {
                 if (reward.roleId !== topReward.roleId && member.roles.cache.has(reward.roleId)) {
                     await member.roles.remove(reward.roleId).catch(() => {});
-                    log(`🛡️ ROLLEN-UPDATE: - Veraltete Rolle "${reward.roleName}" von ${userData.username} entfernt.`);
+                    log(`🛡️ ROLLEN-UPDATE: - "${reward.roleName}" von ${userData.username} entfernt.`);
                 }
             }
         }
         return true;
     } catch (err) { 
-        log(`❌ FEHLER bei syncUserRoles für ${userData.username}: ${err.message}`);
+        log(`❌ FEHLER bei syncUserRoles (${userData.username}): ${err.message}`);
         return false; 
     }
 }
@@ -437,6 +438,9 @@ setInterval(async () => {
     const allUsers = await StreamUser.find({});
     const statusChannelId = '1459882167848145073'; 
 
+    // Optional: Kurzes Log, dass der Check läuft
+    // log(`🔍 SYSTEM-CHECK: Prüfe Status für ${allUsers.length} Profile...`);
+
     for (const userData of allUsers) {
         try {
             // 1. ANTI-GEISTER-PRÜFUNG
@@ -445,16 +449,16 @@ setInterval(async () => {
                 const member = await guild?.members.fetch(userData.userId).catch(() => null);
                 
                 if (!member || !member.voice.channel || !member.voice.streaming) {
-                    log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} korrigiert.`);
+                    log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} beendet.`);
                     await handleStreamStop(userData.userId, userData.guildId);
                     continue; 
                 }
             }
 
-            // 2. ROLLEN & LEVEL-UP LOGIK
-            // HIER werden jetzt durch die neue syncUserRoles-Funktion die Rollen-Logs (🛡️) ausgegeben
+            // 2. ROLLEN-UPDATE (Loggt jetzt automatisch über die Funktion oben)
             await syncUserRoles(userData, now);
 
+            // 3. LEVEL-UP BERECHNUNG
             let totalMins = userData.totalMinutes;
             if (userData.isStreaming && userData.lastStreamStart) {
                 const diff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
@@ -463,12 +467,11 @@ setInterval(async () => {
 
             const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
 
-            // 3. BENACHRICHTIGUNG BEI RANG-AUFSTIEG
+            // 4. BENACHRICHTIGUNG BEI RANG-AUFSTIEG
             if (userData.lastNotifiedRank !== currentRank.name) {
                 const oldRankIndex = ranks.findIndex(r => r.name === userData.lastNotifiedRank);
                 const currentRankIndex = ranks.findIndex(r => r.name === currentRank.name);
 
-                // Prüfen, ob es ein Aufstieg ist (Index wird kleiner, da GOD OF MAX WIN oben steht)
                 if (oldRankIndex === -1 || currentRankIndex < oldRankIndex) {
                     const channel = await client.channels.fetch(statusChannelId).catch(() => null);
                     if (channel) {
@@ -487,8 +490,7 @@ setInterval(async () => {
                             .setTimestamp();
 
                         await channel.send({ content: `<@${userData.userId}>`, embeds: [levelEmbed] }).catch(() => {});
-                        // Dein bestehendes Log:
-                        log(`⭐ LEVEL UP: ${userData.username} hat den Rang ${currentRank.name} erreicht!`);
+                        log(`⭐ LEVEL UP: ${userData.username} -> ${currentRank.name}`);
                     }
                 }
                 userData.lastNotifiedRank = currentRank.name;
@@ -581,6 +583,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
