@@ -473,13 +473,14 @@ function renderLeaderboard(userList, timeKey) { %>
 
 <div class="ranking-content">
     <% 
-        // 1. Filtern: Wer ist gerade live?
+        // 1. Filtern: Wer ist gerade live? (Die Logik bleibt oben)
         const liveUsers = allTimeLeaderboard.filter(u => u.isStreaming); 
     %>
 
+    <% renderLeaderboard(allTimeLeaderboard, 'effectiveTotal'); %>
+
     <% if (liveUsers.length > 0) { %>
-        <div class="live-now-section mb-5">
-            <h3 class="text-accent mb-4" style="letter-spacing: 2px;">
+        <div class="live-now-section mb-5 mt-5"> <h3 class="text-accent mb-4" style="letter-spacing: 2px;">
                 <i class="fas fa-broadcast-tower fa-beat me-2" style="color: #ff0055;"></i> AKTUELL LIVE
             </h3>
             
@@ -522,8 +523,6 @@ function renderLeaderboard(userList, timeKey) { %>
             <div class="mt-5" style="height: 1px; background: linear-gradient(to right, transparent, rgba(251, 191, 36, 0.3), transparent);"></div>
         </div>
     <% } %>
-
-    <% renderLeaderboard(allTimeLeaderboard, 'effectiveTotal'); %>
 
     <div class="mt-5 p-4 glass-card border-0 shadow-lg text-center">
         <h5 class="text-accent mb-4 fw-bold text-uppercase" style="letter-spacing: 2px;">Rollen Roadmap</h5>
