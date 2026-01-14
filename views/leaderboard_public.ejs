@@ -274,11 +274,23 @@ const ranks = [
 ];
 
 const getRankInfo = (mins) => {
+    // Finde den aktuellen Rang (das erste Element, dessen min <= mins ist)
     const current = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1];
     const nextIndex = ranks.indexOf(current) - 1;
     const next = nextIndex >= 0 ? ranks[nextIndex] : null;
+    
     let progress = 100;
-    if (next) progress = Math.floor(((mins - current.min) / (next.min - current.min)) * 100);
+    if (next) {
+        // DIFFERENZ-LOGIK:
+        // Wir berechnen, wie weit man ÜBER dem aktuellen Minimum ist,
+        // im Verhältnis zur Spanne bis zum nächsten Minimum.
+        const rangeNeeded = next.min - current.min;
+        const progressInRange = mins - current.min;
+        progress = Math.floor((progressInRange / rangeNeeded) * 100);
+        
+        // Sicherheitscheck (darf nicht unter 0 oder über 100 fallen)
+        progress = Math.max(0, Math.min(100, progress));
+    }
     return { current, next, progress };
 };
 
@@ -298,6 +310,7 @@ function renderLeaderboard(userList, timeKey) { %>
                  data-bs-toggle="tooltip" 
                  data-bs-placement="top"
                  data-bs-title="<%= info.next ? 'Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis zum nächsten Rang' : 'Höchster Rang erreicht!' %>">
+                
                 <% if(index === 0) { %>
                     <i class="fas fa-crown crown-icon" style="color: #fbbf24; text-shadow: 0 0 15px rgba(251, 191, 36, 0.6);"></i>
                 <% } else if(index === 1) { %>
@@ -316,17 +329,27 @@ function renderLeaderboard(userList, timeKey) { %>
                 <div class="opacity-50 mb-2" style="font-size: 0.7rem; font-weight: 400; line-height: 1;">@<%= user.username %></div>
 
                 <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;">
-                <%= info.current.name %>
+                    <%= info.current.name %>
                 </div>
+
                 <% if(user.isStreaming) { %><span class="badge mb-2" style="background-color: #ff0055;">LIVE</span><% } %>
+                
                 <div class="text-accent fw-bold live-timer" data-base="<%= user.totalMinutes %>" data-start="<%= user.isStreaming ? user.lastStreamStart : 'null' %>">
                     <%= formatFullTime(user[timeKey]) %>
                 </div>
-                <div class="small mt-1 fw-bold" style="color: <%= info.current.color %>; filter: brightness(1.2);">Platz <%= index + 1 %></div>
+
+                <% if(info.next) { %>
+                    <div class="progress-custom mx-auto mt-2" style="width: 80%; height: 5px;">
+                        <div class="progress-bar <%= info.progress > 80 ? 'progress-bar-glow' : '' %>" 
+                             style="width: <%= info.progress %>%; background: <%= info.current.color %>; box-shadow: 0 0 10px <%= info.current.color %>;">
+                        </div>
+                    </div>
+                <% } %>
+
+                <div class="small mt-2 fw-bold" style="color: <%= info.current.color %>; filter: brightness(1.2);">Platz <%= index + 1 %></div>
             </div>
         <% }) %>
     </div>
-</div>
     <% } %>
 
     <div class="search-wrapper">
@@ -351,7 +374,7 @@ function renderLeaderboard(userList, timeKey) { %>
                     <tr class="border-bottom border-white border-opacity-10" 
                         data-bs-toggle="tooltip" 
                         data-bs-placement="right"
-                        data-bs-title="<%= info.next ? 'Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis zum nächsten Rang' : 'Höchster Rang erreicht!' %>">
+                        data-bs-title="<%= info.next ? info.progress + '% geschafft! Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis ' + info.next.name : 'Höchster Rang erreicht!' %>">
                         
                         <td class="ps-4 opacity-50">#<%= index + 4 %></td>
                         
