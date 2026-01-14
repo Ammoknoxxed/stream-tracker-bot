@@ -259,26 +259,26 @@ app.get('/dashboard/:guildId', async (req, res) => {
     
 });
 
-    app.get('/roadmap', (req, res) => {
-    // Hier definierst du deine Projekte
+app.get('/roadmap', (req, res) => {
     const projects = [
+
         { 
             title: "Globales Ranking-System", 
-            desc: "Ein serverübergreifendes Leaderboard für alle angeschlossenen Partner-Server.", 
+            desc: "Internationale Erreichbarkeit des Bots.", 
             status: "In Arbeit", 
-            progress: 75 
+            progress: 80 
         },
         { 
             title: "Eigene Profil-Karten", 
             desc: "User können ihr Hintergrundbild auf der Ranking-Seite personalisieren.", 
             status: "Geplant", 
-            progress: 15 
+            progress: 0 
         },
         { 
-            title: "Automatisierte Rollen-Vergabe", 
-            desc: "Rollen werden sofort im Discord aktualisiert, sobald ein Meilenstein erreicht wird.", 
-            status: "Fertig", 
-            progress: 100 
+            title: "Selbstständiges Aktivieren/Deaktivieren des Rankings", 
+            desc: "User können selbst entscheiden, ob sie am Ranking teilnehmen möchten.", 
+            status: "Geplant", 
+            progress: 15 
         },
         { 
             title: "Live-Stream Vorschau", 
@@ -286,11 +286,53 @@ app.get('/dashboard/:guildId', async (req, res) => {
             status: "Konzept", 
             progress: 5 
         }
+         { 
+            title: "Streak System", 
+            desc: "Individuelle Stream-Streaks werden angezeigt und belohnt", 
+            status: "Konzept", 
+            progress: 5 
+        }
+       { 
+            title: "OBS Overlay mit Animationen", 
+            desc: "Rollen Upgrades werden animiert als OBS Overlay eingebunden", 
+            status: "Konzept", 
+            progress: 0 
+        }
+         { 
+            title: "Automatisierte Rollen-Vergabe", 
+            desc: "Rollen werden sofort im Discord aktualisiert, sobald ein Meilenstein erreicht wird (inklusive Geister-Stream-Schutz).", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Admin Dashboard", 
+            desc: "Verwaltung von Belohnungen, Kanälen und manuelles Anpassen von Stream-Zeiten über das Web-Interface.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Anti-Ghosting System", 
+            desc: "Automatischer Scan, der erkennt, wenn ein Stream ohne Zuschauer läuft oder Discord den Status falsch anzeigt.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Level-Up Benachrichtigungen", 
+            desc: "Schicke Embed-Nachrichten in den Chat, sobald ein User einen neuen Meilenstein erreicht.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Interaktives Leaderboard", 
+            desc: "Öffentliche Webseite, die alle Streamer nach ihrer Zeit sortiert anzeigt.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        
     ];
 
-    // Wir brauchen das Guild-Objekt für den Namen im Header
-    // Falls du eine Variable für deine Guild hast (z.B. client.guilds.cache...)
-    const guild = { name: "DEIN SERVER NAME" }; 
+    // Hier setzen wir deinen echten Servernamen ein
+    const guild = { name: "JUICER BOT" }; 
 
     res.render('roadmap', { projects, guild });
 });
@@ -678,6 +720,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
