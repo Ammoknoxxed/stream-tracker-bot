@@ -439,27 +439,50 @@ async function handleStreamStop(userId, guildId) {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
-    const userId = newState.id;
-
-    // --- MUTE/DEAFEN SCHUTZ ---
-    // Wenn der User im gleichen Kanal bleibt und sich sein Streaming-Status nicht geändert hat, 
-    // ignorieren wir das Event (dadurch läuft das Tracking bei Mute/Unmute einfach weiter).
+    
+    // 1. VOID-CHECK: Hat sich überhaupt der Channel geändert oder der Streaming-Status?
+    // (Mute/Deafen ignorieren)
     if (oldState.channelId === newState.channelId && oldState.streaming === newState.streaming) {
         return;
     }
 
     const config = await GuildConfig.findOne({ guildId });
-    const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(newState.channelId);
-    
-    // Prüfen, ob Zuschauer da sind (Zuschauer-Zahl ohne Bots)
-    const hasViewers = newState.channel && newState.channel.members.filter(m => !m.user.bot).size >= 2;
 
-    // Logik: User muss im Channel sein, streamen, im erlaubten Channel sein und Zuschauer haben
-    if (newState.channel && newState.streaming && isAllowed && hasViewers) {
-        await handleStreamStart(userId, guildId, newState.member.user.username, newState.member.user.displayAvatarURL());
-    } else {
-        // Stoppt nur, wenn der Stream wirklich aus geht, der Channel gewechselt wird oder keine Zuschauer mehr da sind
-        await handleStreamStop(userId, guildId);
+    // --- LOGIK FÜR ALLE IM CHANNEL ---
+    // Wir prüfen den Channel, den der User betreten hat (newState) 
+    // UND den Channel, den der User verlassen hat (oldState).
+    const channelsToCheck = [oldState.channel, newState.channel].filter(Boolean);
+
+    for (const channel of channelsToCheck) {
+        const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
+        const humansInChannel = channel.members.filter(m => !m.user.bot);
+        const hasViewers = humansInChannel.size >= 2;
+
+        for (const [memberId, member] of channel.members) {
+            if (member.user.bot) continue;
+
+            const isStreamingNow = member.voice.streaming && isAllowed && hasViewers;
+            
+            // Datenbank-Status abgleichen
+            const userData = await StreamUser.findOne({ userId: memberId, guildId });
+
+            if (isStreamingNow) {
+                // Sollte streamen -> Falls noch nicht als "isStreaming" markiert, Start-Funktion
+                if (!userData || !userData.isStreaming) {
+                    await handleStreamStart(
+                        memberId, 
+                        guildId, 
+                        member.user.username, 
+                        member.user.displayAvatarURL()
+                    );
+                }
+            } else {
+                // Sollte NICHT streamen (oder Bedingung nicht erfüllt) -> Falls noch als "isStreaming" markiert, Stopp-Funktion
+                if (userData && userData.isStreaming) {
+                    await handleStreamStop(memberId, guildId);
+                }
+            }
+        }
     }
 });
 
@@ -614,6 +637,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
