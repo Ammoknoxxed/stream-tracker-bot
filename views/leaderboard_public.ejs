@@ -153,7 +153,21 @@
             100% { transform: scale(1.2) translateY(0) rotate(0deg); }
         }
         
-        .progress-custom { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 5px; }
+        .progress-custom { 
+            height: 6px; 
+            background: rgba(255,255,255,0.1); 
+            border-radius: 10px; 
+            overflow: hidden; 
+            margin-top: 5px; 
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
+            background-color: var(--accent); /* Fallback-Farbe */
+        }
+
         .table { --bs-table-bg: transparent; color: white !important; }
         .table thead th { color: var(--accent) !important; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; border-bottom: 2px solid rgba(251, 191, 36, 0.2); }
         .text-accent { color: var(--accent) !important; }
