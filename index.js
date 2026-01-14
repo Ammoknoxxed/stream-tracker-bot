@@ -198,6 +198,19 @@ app.get('/leaderboard/:guildId', async (req, res) => {
 
 app.get('/login', passport.authenticate('discord'));
 
+app.get('/logout', (req, res, next) => {
+    req.logout(function(err) {
+        if (err) { 
+            log(`❌ LOGOUT FEHLER: ${err.message}`);
+            return next(err); 
+        }
+        req.session.destroy(() => {
+            res.clearCookie('connect.sid'); // Löscht das Session-Cookie im Browser
+            res.redirect('/');
+        });
+    });
+});
+
 app.get('/auth/discord/callback', 
     passport.authenticate('discord', { failureRedirect: '/' }), 
     (req, res) => {
@@ -601,6 +614,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
