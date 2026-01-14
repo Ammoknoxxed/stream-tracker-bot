@@ -417,7 +417,11 @@ client.on('messageCreate', async (message) => {
 
 // --- TRACKING LOGIK ---
 async function handleStreamStart(userId, guildId, username, avatarURL) {
-    log(`🟢 START: ${username} (${userId}) hat einen Stream gestartet.`); // LOG HINZUFÜGEN
+    // Nur starten, wenn er nicht bereits als "isStreaming" in der DB steht
+    const existing = await StreamUser.findOne({ userId, guildId });
+    if (existing && existing.isStreaming) return; 
+
+    log(`🟢 START: ${username} (${userId}) hat einen gültigen Stream (mit Zuschauern) gestartet.`);
     await StreamUser.findOneAndUpdate(
         { userId, guildId },
         { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
@@ -637,6 +641,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
