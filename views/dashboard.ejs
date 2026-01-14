@@ -3,89 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serverwahl</title>
+    <title>Serverwahl | Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --bg-color: #0b0e11;
-            --card-bg: #15191d;
-            --accent-blue: #00d2ff;
+            --accent: #fbbf24; /* Das Gold von der Leaderboard-Seite */
+            --bg-card: rgba(10, 10, 15, 0.8);
             --danger: #f04747;
         }
 
-        body { 
-            font-family: 'Segoe UI', sans-serif; 
-            background: var(--bg-color); 
-            color: #dcddde; 
+        body {
+            /* Hintergrund-Stil vom Leaderboard übernommen */
+            background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('/images/background.jpg');
+            background-attachment: fixed;
+            background-position: center;
+            background-size: cover;
+            color: white;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 40px;
-            cursor: default; /* Normaler Cursor */
+            padding: 40px 20px;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        h1 { color: white; border-bottom: 2px solid var(--accent-blue); padding-bottom: 10px; }
-        .welcome-text { margin-bottom: 30px; color: #8e9297; }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
 
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: 3px;
+            color: var(--accent);
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .welcome-text {
+            opacity: 0.75;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 300;
+        }
+
+        /* --- GLASS CARD STYLE (vom Leaderboard) --- */
         .guild-container {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
+            gap: 25px;
         }
 
-        .guild-card { 
-            background: var(--card-bg); 
-            padding: 20px; 
-            border-radius: 12px; 
-            border: 1px solid #23272a;
+        .guild-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 10, 15, 0.85) 100%) !important;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 20px;
+            padding: 30px;
             text-align: center;
-            transition: 0.2s;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
+
+        /* Glanz-Effekt wie auf dem Podium */
+        .guild-card::after {
+            content: ""; position: absolute; top: 0; left: -150%; width: 60%; height: 100%;
+            background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%); 
+            transform: skewX(-25deg); transition: 0.5s; pointer-events: none;
+        }
+
+        .guild-card:hover::after {
+            animation: sheen 3s infinite;
+        }
+
+        @keyframes sheen { 0% { left: -150%; } 30% { left: 150%; } 100% { left: 150%; } }
 
         .guild-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--accent-blue);
-            cursor: pointer;
+            transform: translateY(-12px);
+            border-color: var(--accent) !important;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 20px rgba(251, 191, 36, 0.2);
         }
 
         .guild-icon {
-            width: 80px; height: 80px;
+            width: 100px;
+            height: 100px;
             border-radius: 50%;
-            margin-bottom: 15px;
-            border: 2px solid var(--accent-blue);
+            margin-bottom: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            transition: 0.3s;
+            object-fit: cover;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
 
-        .btn { 
+        .guild-card:hover .guild-icon {
+            border-color: var(--accent);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+        }
+
+        .guild-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* --- BUTTON STYLE --- */
+        .btn {
             display: inline-block;
-            background: var(--accent-blue); 
-            color: white; 
-            padding: 10px 20px; 
-            text-decoration: none; 
-            border-radius: 6px; 
-            font-weight: bold;
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            padding: 10px 25px;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: var(--accent);
+            color: #000;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+        }
+
+        /* --- LOGOUT LINK --- */
+        .logout-wrapper {
+            text-align: center;
+            margin-top: 60px;
         }
 
         .logout-link {
-            display: inline-block; margin-top: 40px;
-            color: var(--danger); text-decoration: none;
-            padding: 10px; border: 1px solid var(--danger); border-radius: 6px;
+            color: var(--danger);
+            text-decoration: none;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0.6;
+            transition: 0.3s;
+            padding: 10px 20px;
+            border: 1px solid transparent;
+        }
+
+        .logout-link:hover {
+            opacity: 1;
+            border-color: var(--danger);
+            border-radius: 8px;
+        }
+
+        /* --- PARTICLES --- */
+        .particles-container { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: -1; overflow: hidden; pointer-events: none; 
+        }
+        .particle { 
+            position: absolute; background: var(--accent); border-radius: 50%; 
+            opacity: 0.3; filter: blur(2px); animation: floatUp 15s linear infinite; 
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(110vh) translateX(0); opacity: 0; }
+            10% { opacity: 0.2; }
+            90% { opacity: 0.2; }
+            100% { transform: translateY(-20vh) translateX(100px); opacity: 0; }
         }
     </style>
 </head>
 <body>
-    <h1>🎰 Willkommen, <%= user.username %>!</h1>
-    <p class="welcome-text">Wähle einen Server zum Konfigurieren:</p>
+    <div class="particles-container" id="particles"></div>
 
-    <div class="guild-container">
-        <% guilds.forEach(guild => { %>
-            <div class="guild-card">
-                <% if (guild.icon) { %>
-                    <img class="guild-icon" src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png">
-                <% } else { %>
-                    <div class="guild-icon" style="display:flex; align-items:center; justify-content:center; margin:auto; font-size:2em;"><%= guild.name.charAt(0) %></div>
-                <% } %>
-                <div style="color:white; font-weight:bold; margin-bottom:15px;"><%= guild.name %></div>
-                <a href="/dashboard/<%= guild.id %>" class="btn">Einstellungen</a>
-            </div>
-        <% }) %>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-gamepad me-2"></i> Dashboard</h1>
+            <p class="welcome-text">Willkommen zurück, <strong><%= user.username %></strong></p>
+        </div>
+
+        <div class="guild-container">
+            <% guilds.forEach(guild => { %>
+                <div class="guild-card" onclick="window.location.href='/dashboard/<%= guild.id %>'">
+                    <% if (guild.icon) { %>
+                        <img class="guild-icon" src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png">
+                    <% } else { %>
+                        <div class="guild-icon d-flex align-items-center justify-content-center" 
+                             style="background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
+                             <span style="font-size: 2.5rem; font-weight: 800; color: var(--accent);"><%= guild.name.charAt(0) %></span>
+                        </div>
+                    <% } %>
+                    
+                    <div class="guild-name"><%= guild.name %></div>
+                    <a href="/dashboard/<%= guild.id %>" class="btn">Konfigurieren</a>
+                </div>
+            <% }) %>
+        </div>
+
+        <div class="logout-wrapper">
+            <a href="/logout" class="logout-link"><i class="fas fa-sign-out-alt me-1"></i> Abmelden</a>
+        </div>
     </div>
-    <a href="/logout" class="logout-link">Abmelden</a>
+
+    <script>
+        // Partikel-Effekt (gleiche Logik wie Leaderboard)
+        function createParticles() {
+            const container = document.getElementById('particles');
+            const particleCount = 12; 
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                const size = Math.random() * 4 + 2 + 'px';
+                particle.style.width = size;
+                particle.style.height = size;
+                particle.style.left = Math.random() * 100 + 'vw';
+                particle.style.animationDuration = Math.random() * 10 + 10 + 's';
+                particle.style.animationDelay = Math.random() * 15 + 's';
+                container.appendChild(particle);
+            }
+        }
+        createParticles();
+    </script>
 </body>
 </html>
