@@ -3,104 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamTracker - <%= guild.name %></title>
+    <title>Settings | <%= guild.name %></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/style.css">
     <style>
-        :root {
+        :root { 
+            --accent: #fbbf24; 
             --accent-blue: #00d2ff;
-            --gold: #ffb900;
-            --bg-dark: #0b0e11;
+            --bg-dark: #0a0a0f;
         }
-        body { background-color: var(--bg-dark); color: white; }
-        .glass-card { 
-            background: rgba(21, 25, 29, 0.8); 
-            backdrop-filter: blur(10px); 
-            border: 1px solid rgba(255,255,255,0.05); 
-            border-radius: 15px;
-        }
-        .text-accent { color: var(--accent-blue) !important; }
-        .live-timer-active { color: #ff4757 !important; text-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
-        .pulse-live { animation: pulse-red 2s infinite; }
-        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        
-        .rank-gold { color: var(--gold); }
-        .rank-silver { color: #bdc3c7; }
-        .rank-bronze { color: #cd7f32; }
 
-        .search-input {
-            background: rgba(0,0,0,0.2);
-            border: 1px solid rgba(255,255,255,0.1);
+        body {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.85)), url('/images/background.jpg');
+            background-attachment: fixed;
+            background-position: center;
+            background-size: cover;
             color: white;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* --- GLASSMOPHISM --- */
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 10, 15, 0.85) 100%) !important;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
             border-radius: 20px;
-            padding: 5px 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
-        .search-input:focus {
-            background: rgba(0,0,0,0.3);
-            color: white;
-            border-color: var(--accent-blue);
-            box-shadow: none;
+
+        .text-accent { color: var(--accent) !important; }
+        
+        /* --- TABLE STYLING --- */
+        .table { --bs-table-bg: transparent; color: white !important; margin-bottom: 0; }
+        .table thead th { 
+            background: rgba(0,0,0,0.2);
+            color: var(--accent) !important; 
+            text-transform: uppercase; 
+            font-size: 0.75rem; 
+            letter-spacing: 1px; 
+            border-bottom: 1px solid rgba(251, 191, 36, 0.2);
+            padding: 15px;
         }
-        .adjust-input {
-            width: 75px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: white;
-            border-radius: 4px;
-            padding: 2px 5px;
-            text-align: center;
+        .table tbody td { padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+        /* --- INPUTS & BUTTONS --- */
+        .search-input, .adjust-input, .form-control, .form-select {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+            border-radius: 10px;
+            transition: 0.3s;
         }
+        .search-input:focus, .form-control:focus {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.2) !important;
+        }
+
         .btn-cyber {
-            background: var(--accent-blue);
+            background: var(--accent);
             color: black;
-            font-weight: bold;
+            font-weight: 700;
             border: none;
+            border-radius: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             transition: 0.3s;
         }
         .btn-cyber:hover {
             background: white;
-            box-shadow: 0 0 15px var(--accent-blue);
+            box-shadow: 0 0 20px var(--accent);
+            transform: translateY(-2px);
         }
+
+        /* --- ANIMATIONS --- */
+        .pulse-live {
+            width: 8px; height: 8px;
+            background: #ff0055;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px #ff0055;
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .particles-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        .particle { position: absolute; background: var(--accent); border-radius: 50%; opacity: 0.2; animation: floatUp 15s linear infinite; }
+        @keyframes floatUp {
+            0% { transform: translateY(110vh) translateX(0); opacity: 0; }
+            50% { opacity: 0.2; }
+            100% { transform: translateY(-10vh) translateX(50px); opacity: 0; }
+        }
+
+        .scroll-container { max-height: 650px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+        .scroll-container::-webkit-scrollbar { width: 5px; }
+        .scroll-container::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
     </style>
 </head>
 <body>
 
+<div class="particles-container" id="particles"></div>
+
 <div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-4 glass-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-5 glass-card p-4">
         <div class="d-flex align-items-center">
             <% if(guild.icon) { %>
-                <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="rounded-circle me-3" style="width: 55px; border: 2px solid var(--accent-blue);">
+                <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" 
+                     class="rounded-circle me-3" style="width: 60px; border: 2px solid var(--accent); box-shadow: 0 0 15px rgba(251, 191, 36, 0.3);">
             <% } %>
             <div>
-                <h1 class="h3 mb-0 text-white"><%= guild.name %></h1>
-                <span class="text-accent small"><i class="fas fa-cog fa-spin me-1"></i> Management Dashboard</span>
+                <h1 class="h3 mb-0 fw-bold text-white"><%= guild.name %></h1>
+                <span class="text-accent small"><i class="fas fa-shield-halved me-1"></i> Admin Management Dashboard</span>
             </div>
         </div>
-        <a href="/dashboard" class="btn btn-outline-light btn-sm px-3 rounded-pill"><i class="fas fa-arrow-left me-1"></i> Serverliste</a>
+        <a href="/dashboard" class="btn btn-outline-light btn-sm px-4 rounded-pill"><i class="fas fa-chevron-left me-2"></i> Zurück</a>
     </div>
 
     <div class="row">
         <div class="col-lg-8 mb-4">
             <div class="glass-card h-100 overflow-hidden">
-                <div class="p-4 border-bottom border-secondary d-flex justify-content-between align-items-center bg-white bg-opacity-5">
-                    <h5 class="mb-0"><i class="fas fa-users text-accent me-2"></i> User-Verwaltung</h5>
-                    <input type="text" id="userSearch" class="form-control form-control-sm search-input w-auto" placeholder="User suchen...">
+                <div class="p-4 d-flex justify-content-between align-items-center" style="background: rgba(255,255,255,0.03);">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-accent me-2"></i> User-Verwaltung</h5>
+                    <div class="position-relative">
+                        <i class="fas fa-search position-absolute top-50 start-0 translate-middle-y ms-3 text-accent opacity-50"></i>
+                        <input type="text" id="userSearch" class="form-control form-control-sm search-input ps-5" placeholder="Mitglied suchen...">
+                    </div>
                 </div>
                 
-                <div class="table-responsive">
-                    <table class="table table-dark table-hover align-middle mb-0" id="userTable">
-                        <thead class="bg-transparent">
+                <div class="table-responsive scroll-container">
+                    <table class="table table-hover align-middle" id="userTable">
+                        <thead>
                             <tr>
-                                <th class="ps-4 border-0">Rank</th>
-                                <th class="border-0">Mitglied</th>
-                                <th class="border-0 text-center">Zeit</th>
-                                <th class="border-0 text-center">Anpassung</th>
-                                <th class="text-end pe-4 border-0">Aktion</th>
+                                <th class="ps-4">Mitglied</th>
+                                <th class="text-center">Streaming-Zeit</th>
+                                <th class="text-center">Quick-Edit</th>
+                                <th class="text-end pe-4">Aktion</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <% trackedUsers.forEach((user, index) => { 
+                            <% trackedUsers.forEach((user) => { 
                                 let displayMinutes = user.totalMinutes;
                                 if (user.isStreaming && user.lastStreamStart) {
                                     const sessionMins = Math.floor((new Date() - new Date(user.lastStreamStart)) / 60000);
@@ -109,53 +151,39 @@
                             %>
                             <tr class="user-row">
                                 <td class="ps-4">
-                                    <% if(index === 0) { %><i class="fas fa-crown rank-gold fs-5"></i>
-                                    <% } else if(index === 1) { %><i class="fas fa-medal rank-silver fs-5"></i>
-                                    <% } else if(index === 2) { %><i class="fas fa-medal rank-bronze fs-5"></i>
-                                    <% } else { %><span class="opacity-50">#<%= index + 1 %></span><% } %>
-                                </td>
-                                <td>
                                     <div class="d-flex align-items-center">
                                         <div class="position-relative me-3">
                                             <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
-                                                 style="width: 38px; height: 38px; border-radius: 50%;" 
-                                                 class="border border-2 <%= user.isStreaming ? 'border-danger' : 'border-secondary' %>">
+                                                 style="width: 42px; height: 42px; border-radius: 50%; border: 2px solid <%= user.isStreaming ? '#ff0055' : 'rgba(255,255,255,0.1)' %>;">
                                             <% if(user.isStreaming) { %>
-                                                <span class="position-absolute bottom-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle pulse-live"></span>
+                                                <span class="position-absolute bottom-0 end-0 pulse-live"></span>
                                             <% } %>
                                         </div>
                                         <div>
-                                            <div class="fw-bold username-text" style="line-height: 1.2;"><%= user.displayName %></div>
-    
-                                            <div class="d-flex align-items-center">
-                                                <span class="opacity-50 small me-2">@<%= user.username %></span>
-        
-                                                <% if(user.isStreaming) { %>
-                                                    <span class="text-danger fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">LIVE</span>
-                                                <% } %>
-                                        </div>
+                                            <div class="fw-bold text-white username-text"><%= user.displayName %></div>
+                                            <div class="small opacity-50">@<%= user.username %></div>
                                         </div>
                                     </div>
                                 </td>
                                 <td class="text-center">
-                                    <span class="text-accent fw-bold live-timer-container <%= user.isStreaming ? 'live-timer-active' : '' %>"
+                                    <span class="text-accent fw-bold fs-5 live-timer-container"
                                           data-base="<%= user.totalMinutes %>"
                                           data-start="<%= user.isStreaming && user.lastStreamStart ? user.lastStreamStart.toISOString() : 'null' %>">
                                         <%= displayMinutes %>
                                     </span> 
-                                    <span class="small opacity-50">min</span>
+                                    <span class="small opacity-50 text-uppercase" style="font-size: 0.6rem;">min</span>
                                 </td>
                                 <td class="text-center">
-                                    <form action="/dashboard/<%= guild.id %>/adjust-time" method="POST" class="d-inline-flex justify-content-center">
+                                    <form action="/dashboard/<%= guild.id %>/adjust-time" method="POST" class="d-inline-flex">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
-                                        <input type="number" name="minutes" class="adjust-input me-1" placeholder="min" required>
-                                        <button type="submit" class="btn btn-sm btn-warning py-0" title="Zeit anpassen"><i class="fas fa-check"></i></button>
+                                        <input type="number" name="minutes" class="adjust-input me-2 text-center" style="width: 70px;" placeholder="+/-">
+                                        <button type="submit" class="btn btn-sm btn-dark border-secondary"><i class="fas fa-save"></i></button>
                                     </form>
                                 </td>
                                 <td class="text-end pe-4">
-                                    <form action="/dashboard/<%= guild.id %>/delete-user" method="POST" onsubmit="return confirm('Statistik wirklich löschen?')">
+                                    <form action="/dashboard/<%= guild.id %>/delete-user" method="POST" onsubmit="return confirm('Statistik unwiderruflich löschen?')">
                                         <input type="hidden" name="userId" value="<%= user.userId %>">
-                                        <button class="btn btn-link text-danger p-0" title="User löschen"><i class="fas fa-user-minus"></i></button>
+                                        <button class="btn btn-link text-danger p-0" title="User entfernen"><i class="fas fa-trash-can"></i></button>
                                     </form>
                                 </td>
                             </tr>
@@ -168,36 +196,35 @@
 
         <div class="col-lg-4">
             <div class="glass-card p-4 mb-4">
-                <h5 class="mb-3 text-accent d-flex justify-content-between">
-                    <span><i class="fas fa-gift me-2"></i> Belohnungen</span>
-                    <i class="fas fa-coins text-warning"></i>
+                <h5 class="mb-4 text-accent d-flex align-items-center">
+                    <i class="fas fa-trophy me-2"></i> Rank-Rewards
                 </h5>
-                <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-4 p-3 bg-black bg-opacity-25 rounded shadow-sm">
-                    <div class="mb-2">
-                        <label class="small opacity-50 mb-1">Benötigte Zeit</label>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text bg-dark text-white border-secondary"><i class="fas fa-clock"></i></span>
-                            <input type="number" name="minutes" class="form-control bg-transparent text-white border-secondary" placeholder="z.B. 60" required>
-                        </div>
+                <form action="/dashboard/<%= guild.id %>/save" method="POST" class="mb-4">
+                    <div class="mb-3">
+                        <label class="small opacity-50 mb-1">Minuten-Meilenstein</label>
+                        <input type="number" name="minutes" class="form-control form-control-sm" placeholder="z.B. 1440" required>
                     </div>
                     <div class="mb-3">
-                        <label class="small opacity-50 mb-1">Discord Rolle</label>
-                        <select name="roleId" class="form-select form-select-sm bg-dark text-white border-secondary">
+                        <label class="small opacity-50 mb-1">Belohnungs-Rolle</label>
+                        <select name="roleId" class="form-select form-select-sm">
                             <% roles.forEach(role => { %>
                                 <option value="<%= role.id %>">@<%= role.name %></option>
                             <% }) %>
                         </select>
                     </div>
-                    <button class="btn btn-cyber btn-sm w-100 shadow-sm">Level-Rolle hinzufügen</button>
+                    <button class="btn btn-cyber btn-sm w-100 shadow-sm">Hinzufügen</button>
                 </form>
 
-                <div class="reward-list" style="max-height: 200px; overflow-y: auto;">
+                <div class="reward-list">
                     <% config.rewards.forEach((r, i) => { %>
-                        <div class="d-flex justify-content-between align-items-center p-2 mb-2 rounded bg-white bg-opacity-5 border-start border-3 border-accent">
-                            <span class="small"><strong><%= r.minutesRequired %>m</strong> &rarr; <span class="badge bg-primary opacity-75">@<%= r.roleName %></span></span>
+                        <div class="d-flex justify-content-between align-items-center p-3 mb-2 rounded bg-black bg-opacity-25 border-start border-3 border-accent">
+                            <div>
+                                <div class="fw-bold small"><%= r.minutesRequired %> Min.</div>
+                                <span class="badge bg-dark border border-secondary text-accent">@<%= r.roleName %></span>
+                            </div>
                             <form action="/dashboard/<%= guild.id %>/delete-reward" method="POST">
                                 <input type="hidden" name="rewardIndex" value="<%= i %>">
-                                <button class="btn btn-link text-danger p-0 ms-2"><i class="fas fa-trash"></i></button>
+                                <button class="btn btn-link text-danger p-0 ms-2"><i class="fas fa-times"></i></button>
                             </form>
                         </div>
                     <% }) %>
@@ -205,20 +232,21 @@
             </div>
 
             <div class="glass-card p-4">
-                <h5 class="mb-3 text-accent"><i class="fas fa-microphone-lines me-2"></i> Erlaubte Kanäle</h5>
+                <h5 class="mb-3 text-accent"><i class="fas fa-satellite-dish me-2"></i> Tracking-Kanäle</h5>
+                <p class="small opacity-50">Wähle die Voice-Kanäle aus, in denen gestreamt werden darf.</p>
                 <form action="/dashboard/<%= guild.id %>/save-channels" method="POST">
-                    <div class="channel-selector mb-3 p-2 bg-black bg-opacity-25 rounded" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05);">
+                    <div class="channel-selector mb-3 p-3 bg-black bg-opacity-25 rounded border border-white border-opacity-10" style="max-height: 250px; overflow-y: auto;">
                         <% channels.forEach(ch => { %>
-                            <div class="form-check small mb-1">
+                            <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" name="channels" value="<%= ch.id %>" id="ch-<%= ch.id %>"
                                 <%= config.allowedChannels.includes(ch.id) ? 'checked' : '' %>>
-                                <label class="form-check-label opacity-75" for="ch-<%= ch.id %>">
+                                <label class="form-check-label small" for="ch-<%= ch.id %>">
                                     <%= ch.type === 4 ? '📁' : '🔊' %> <%= ch.name %>
                                 </label>
                             </div>
                         <% }) %>
                     </div>
-                    <button class="btn btn-outline-info btn-sm w-100">Auswahl speichern</button>
+                    <button class="btn btn-outline-warning btn-sm w-100 fw-bold">Kanäle speichern</button>
                 </form>
             </div>
         </div>
@@ -226,14 +254,27 @@
 </div>
 
 <script>
-    // Echtzeit User-Suche
+    // Partikel Effekt Generator
+    const particlesContainer = document.getElementById('particles');
+    for (let i = 0; i < 30; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const size = Math.random() * 4 + 2 + 'px';
+        p.style.width = size;
+        p.style.height = size;
+        p.style.left = Math.random() * 100 + 'vw';
+        p.style.animationDelay = Math.random() * 15 + 's';
+        p.style.animationDuration = Math.random() * 10 + 10 + 's';
+        particlesContainer.appendChild(p);
+    }
+
+    // Live Suche
     document.getElementById('userSearch').addEventListener('keyup', function() {
         let filter = this.value.toLowerCase();
-        let rows = document.querySelectorAll('#userTable tbody tr');
-        
+        let rows = document.querySelectorAll('.user-row');
         rows.forEach(row => {
-            let username = row.querySelector('.username-text').innerText.toLowerCase();
-            row.style.display = username.includes(filter) ? '' : 'none';
+            let name = row.querySelector('.username-text').innerText.toLowerCase();
+            row.style.display = name.includes(filter) ? '' : 'none';
         });
     });
 
@@ -243,14 +284,10 @@
         document.querySelectorAll('.live-timer-container').forEach(el => {
             const startStr = el.getAttribute('data-start');
             const baseMins = parseInt(el.getAttribute('data-base'));
-            
             if (startStr && startStr !== 'null') {
                 const startTime = new Date(startStr);
-                const diffMs = now - startTime;
-                if (diffMs > 0) {
-                    const sessionMinutes = Math.floor(diffMs / 60000);
-                    el.innerText = baseMins + sessionMinutes;
-                }
+                const sessionMinutes = Math.floor((now - startTime) / 60000);
+                if (sessionMinutes >= 0) el.innerText = baseMins + sessionMinutes;
             }
         });
     }
@@ -259,4 +296,3 @@
 
 </body>
 </html>
-
