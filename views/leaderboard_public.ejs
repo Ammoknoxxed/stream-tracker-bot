@@ -488,28 +488,33 @@ function renderLeaderboard(userList, timeKey) { %>
                     const info = getRankInfo(user.effectiveTotal);
                 %>
                     <div class="col-12 col-md-6 col-lg-4">
-                        <div class="glass-card p-3 d-flex align-items-center border-start border-4" style="border-left-color: #ff0055 !important;">
-                            <div class="position-relative me-3">
-                                <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
-                                     class="rounded-circle glow-streaming" 
-                                     style="width: 55px; height: 55px; object-fit: cover; border: 2px solid #ff0055;">
-                                <span class="position-absolute bottom-0 end-0 badge rounded-pill bg-danger" style="font-size: 0.5rem; border: 1px solid black;">LIVE</span>
-                            </div>
-                            
-                            <div class="flex-grow-1 overflow-hidden">
-                                <div class="username-bright text-truncate" style="font-size: 1rem;"><%= user.nickname || user.username %></div>
-                                <div class="text-accent fw-bold live-timer" 
-                                     data-base="<%= user.totalMinutes %>" 
-                                     data-start="<%= user.lastStreamStart %>" 
-                                     style="font-size: 0.85rem;">
-                                    <%= formatFullTime(user.effectiveTotal) %>
+                        <a href="https://discord.com/channels/<%= guild.id %>/<%= user.voiceChannelId %>" target="_blank" class="text-decoration-none">
+                            <div class="glass-card p-3 d-flex align-items-center border-start border-4" style="border-left-color: #ff0055 !important; transition: all 0.3s ease;">
+                                <div class="position-relative me-3">
+                                    <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                                         class="rounded-circle glow-streaming" 
+                                         style="width: 55px; height: 55px; object-fit: cover; border: 2px solid #ff0055;">
+                                    <span class="position-absolute bottom-0 end-0 badge rounded-pill bg-danger" style="font-size: 0.5rem; border: 1px solid black;">LIVE</span>
+                                </div>
+                                
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div class="username-bright text-truncate" style="font-size: 1rem;"><%= user.nickname || user.username %></div>
+                                    <div class="text-accent fw-bold live-timer" 
+                                         data-base="<%= user.totalMinutes %>" 
+                                         data-start="<%= user.lastStreamStart %>" 
+                                         style="font-size: 0.85rem;">
+                                        <%= formatFullTime(user.effectiveTotal) %>
+                                    </div>
+                                    <div class="text-white-50 mt-1" style="font-size: 0.6rem;">
+                                        <i class="fas fa-external-link-alt me-1"></i> Zum Stream springen
+                                    </div>
+                                </div>
+
+                                <div class="ms-2">
+                                    <img src="/images/ranks/<%= info.current.img %>" style="width: 35px; height: 35px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.2));">
                                 </div>
                             </div>
-
-                            <div class="ms-2">
-                                <img src="/images/ranks/<%= info.current.img %>" style="width: 35px; height: 35px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.2));">
-                            </div>
-                        </div>
+                        </a>
                     </div>
                 <% }) %>
             </div>
