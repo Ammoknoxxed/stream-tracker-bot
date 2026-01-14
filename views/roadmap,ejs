@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roadmap | <%= guild.name %></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --accent: #fbbf24; --bg-card: rgba(10, 10, 15, 0.8); }
+        body {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('/images/background.jpg');
+            background-attachment: fixed; background-size: cover; color: white; min-height: 100vh; font-family: 'Segoe UI', sans-serif;
+        }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 10, 15, 0.85) 100%);
+            backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .roadmap-item:hover {
+            transform: translateY(-5px); border-color: var(--accent);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 15px rgba(251, 191, 36, 0.2);
+        }
+
+        .status-badge { font-size: 0.65rem; padding: 5px 10px; border-radius: 50px; text-transform: uppercase; letter-spacing: 1px; }
+        .status-planned { background: rgba(255,255,255,0.1); color: #ccc; }
+        .status-progress { background: rgba(251, 191, 36, 0.2); color: var(--accent); border: 1px solid var(--accent); }
+        .status-done { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid #22c55e; }
+
+        .progress-custom { height: 8px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; }
+        .progress-bar { background-color: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+        .back-btn { color: white; text-decoration: none; opacity: 0.6; transition: 0.3s; }
+        .back-btn:hover { opacity: 1; color: var(--accent); }
+
+        /* Partikel-Stil vom Ranking übernommen */
+        .particles-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        .particle { position: absolute; background: var(--accent); border-radius: 50%; opacity: 0.2; animation: floatUp 15s linear infinite; }
+        @keyframes floatUp {
+            0% { transform: translateY(110vh); opacity: 0; }
+            10% { opacity: 0.2; }
+            90% { opacity: 0.2; }
+            100% { transform: translateY(-10vh); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="particles-container" id="particles"></div>
+
+    <div class="container py-5" style="max-width: 800px;">
+        <a href="/" class="back-btn mb-4 d-inline-block"><i class="fas fa-arrow-left me-2"></i> Zurück zum Ranking</a>
+        
+        <div class="text-center mb-5">
+            <h1 class="display-4 fw-bold text-accent" style="letter-spacing: 3px; text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);">ROADMAP</h1>
+            <p class="opacity-50 text-uppercase" style="letter-spacing: 5px;">Zukünftige Features & Updates</p>
+        </div>
+
+        <% projects.forEach(project => { %>
+            <div class="glass-card p-4 mb-4 roadmap-item">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h3 class="h5 mb-1 text-white"><%= project.title %></h3>
+                        <p class="small opacity-75 mb-0"><%= project.desc %></p>
+                    </div>
+                    <span class="status-badge <%= project.status === 'Fertig' ? 'status-done' : (project.status === 'In Arbeit' ? 'status-progress' : 'status-planned') %>">
+                        <%= project.status %>
+                    </span>
+                </div>
+
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between mb-1 small">
+                        <span class="opacity-50">Fortschritt</span>
+                        <span class="text-accent fw-bold"><%= project.progress %>%</span>
+                    </div>
+                    <div class="progress-custom">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             style="width: <%= project.progress %>%"></div>
+                    </div>
+                </div>
+            </div>
+        <% }) %>
+
+        <div class="mt-5 text-center p-4 glass-card border-0">
+            <p class="mb-0 opacity-75">Du hast eine Idee für ein neues Feature?</p>
+            <p class="text-accent fw-bold">Schreib es uns im Discord Support-Kanal!</p>
+        </div>
+    </div>
+
+    <script>
+        // Partikel-Effekt
+        const container = document.getElementById('particles');
+        for (let i = 0; i < 15; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            const size = Math.random() * 5 + 2 + 'px';
+            particle.style.width = size; particle.style.height = size;
+            particle.style.left = Math.random() * 100 + 'vw';
+            particle.style.animationDuration = Math.random() * 10 + 10 + 's';
+            particle.style.animationDelay = Math.random() * 5 + 's';
+            container.appendChild(particle);
+        }
+    </script>
+</body>
+</html>
