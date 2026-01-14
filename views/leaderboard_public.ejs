@@ -299,6 +299,25 @@
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+.roadmap-link {
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: inline-block;
+}
+
+.roadmap-link:hover {
+    transform: scale(1.05);
+    filter: brightness(1.2);
+    text-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
+}
+
+.roadmap-icon-mini {
+    font-size: 0.9rem;
+    vertical-align: middle;
+    margin-left: 8px;
+    opacity: 0.6;
+}
     </style>
 </head>
 <body>
@@ -545,8 +564,13 @@ function renderLeaderboard(userList, timeKey) { %>
         </div>
     <% } %>
 
-    <div class="mt-5 p-4 glass-card border-0 shadow-lg text-center">
-        <h5 class="text-accent mb-4 fw-bold text-uppercase" style="letter-spacing: 2px;">Rollen Roadmap</h5>
+<div class="mt-5 p-4 glass-card border-0 shadow-lg text-center">
+        <a href="/roadmap" class="roadmap-link">
+            <h5 class="text-accent mb-4 fw-bold text-uppercase" style="letter-spacing: 2px;">
+                Rollen Roadmap <i class="fas fa-external-link-alt roadmap-icon-mini"></i>
+            </h5>
+        </a>
+        
         <div class="row g-4 justify-content-center">
             <% [...ranks].reverse().forEach(r => { %>
                 <div class="col-6 col-md-3 col-lg-2">
