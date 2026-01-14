@@ -256,6 +256,43 @@ app.get('/dashboard/:guildId', async (req, res) => {
         roles, 
         channels 
     });
+
+    app.get('/roadmap', (req, res) => {
+    // Hier definierst du deine Projekte
+    const projects = [
+        { 
+            title: "Globales Ranking-System", 
+            desc: "Ein serverübergreifendes Leaderboard für alle angeschlossenen Partner-Server.", 
+            status: "In Arbeit", 
+            progress: 75 
+        },
+        { 
+            title: "Eigene Profil-Karten", 
+            desc: "User können ihr Hintergrundbild auf der Ranking-Seite personalisieren.", 
+            status: "Geplant", 
+            progress: 15 
+        },
+        { 
+            title: "Automatisierte Rollen-Vergabe", 
+            desc: "Rollen werden sofort im Discord aktualisiert, sobald ein Meilenstein erreicht wird.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Live-Stream Vorschau", 
+            desc: "Ein kleines Fenster, das den aktuellen Stream direkt auf der Website zeigt.", 
+            status: "Konzept", 
+            progress: 5 
+        }
+    ];
+
+    // Wir brauchen das Guild-Objekt für den Namen im Header
+    // Falls du eine Variable für deine Guild hast (z.B. client.guilds.cache...)
+    const guild = { name: "DEIN SERVER NAME" }; 
+
+    res.render('roadmap', { projects, guild });
+});
+    
 });
 
 // --- DASHBOARD ACTIONS ---
@@ -641,6 +678,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
