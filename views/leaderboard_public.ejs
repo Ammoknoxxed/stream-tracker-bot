@@ -259,6 +259,26 @@
             opacity: 0.6;
         }
         .d-none-search { display: none !important; }
+
+        /* --- ANIMATION FÜR DAS LIVE-ICON --- */
+        .fa-beat {
+            animation: fa-beat-animation 2s infinite ease-in-out;
+        }
+
+        @keyframes fa-beat-animation {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+        }
+
+        /* --- OPTIONAL: ABSTAND FÜR DIE LIVE-SEKTION --- */
+        .live-now-section {
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -452,26 +472,54 @@ function renderLeaderboard(userList, timeKey) { %>
     </div>
 
     <div class="ranking-content">
-        <% renderLeaderboard(allTimeLeaderboard, 'effectiveTotal'); %>
-    </div>
+    <% 
+        // 1. Filtern: Wer ist gerade live?
+        const liveUsers = allTimeLeaderboard.filter(u => u.isStreaming); 
+    %>
 
-    <div class="mt-5 p-4 glass-card border-0 shadow-lg text-center">
-        <h5 class="text-accent mb-4 fw-bold text-uppercase" style="letter-spacing: 2px;">Rollen Roadmap</h5>
-        <div class="row g-4 justify-content-center">
-            <% [...ranks].reverse().forEach(r => { %>
-                <div class="col-6 col-md-3 col-lg-2">
-                    <div class="rank-card p-3 h-100 d-flex flex-column align-items-center" style="--hover-color: <%= r.color %>;">
-                        <img src="/images/ranks/<%= r.img %>" class="rank-icon-roadmap">
-                        <div class="rank-name-bright" style="color: <%= r.color %>; font-size: 0.75rem; line-height: 1.2;">
-                            <%= r.name %>
-                        </div>
-                        <div class="mt-1 small opacity-50" style="font-size: 0.65rem;">
-                            <%= formatFullTime(r.min) %>
+    <% if (liveUsers.length > 0) { %>
+        <div class="live-now-section mb-5">
+            <h3 class="text-accent mb-4" style="letter-spacing: 2px;">
+                <i class="fas fa-broadcast-tower fa-beat me-2" style="color: #ff0055;"></i> AKTUELL LIVE
+            </h3>
+            
+            <div class="row g-3">
+                <% liveUsers.forEach(user => { 
+                    const info = getRankInfo(user.effectiveTotal);
+                %>
+                    <div class="col-12 col-md-6 col-lg-4">
+                        <div class="glass-card p-3 d-flex align-items-center border-start border-4" style="border-left-color: #ff0055 !important;">
+                            <div class="position-relative me-3">
+                                <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
+                                     class="rounded-circle glow-streaming" 
+                                     style="width: 55px; height: 55px; object-fit: cover; border: 2px solid #ff0055;">
+                                <span class="position-absolute bottom-0 end-0 badge rounded-pill bg-danger" style="font-size: 0.5rem; border: 1px solid black;">LIVE</span>
+                            </div>
+                            
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="username-bright text-truncate" style="font-size: 1rem;"><%= user.nickname || user.username %></div>
+                                <div class="text-accent fw-bold live-timer" 
+                                     data-base="<%= user.totalMinutes %>" 
+                                     data-start="<%= user.lastStreamStart %>" 
+                                     style="font-size: 0.85rem;">
+                                    <%= formatFullTime(user.effectiveTotal) %>
+                                </div>
+                            </div>
+
+                            <div class="ms-2">
+                                <img src="/images/ranks/<%= info.current.img %>" style="width: 35px; height: 35px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.2));">
+                            </div>
                         </div>
                     </div>
-                </div>
-            <% }) %>
+                <% }) %>
+            </div>
+            
+            <div class="mt-5" style="height: 1px; background: linear-gradient(to right, transparent, rgba(251, 191, 36, 0.3), transparent);"></div>
         </div>
+    <% } %>
+
+    <% renderLeaderboard(allTimeLeaderboard, 'effectiveTotal'); %>
+</div>
     </div>
 </div>
 
