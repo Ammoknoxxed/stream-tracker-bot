@@ -1,22 +1,128 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <link rel="stylesheet" href="/style.css">
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUICER BOT | Home</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/style.css"> 
+    <style>
+        :root { 
+            --accent: #fbbf24; 
+            --bg-card: rgba(10, 10, 15, 0.8);
+        }
+
+        body {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('/images/background.jpg');
+            background-attachment: fixed;
+            background-position: center;
+            background-size: cover;
+            color: white;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 10, 15, 0.85) 100%) !important;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 30px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            max-width: 600px;
+            width: 90%;
+            animation: fadeInScale 0.8s ease-out forwards;
+        }
+
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .btn-cyber {
+            background: var(--accent);
+            color: #000 !important;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border: none;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+        }
+
+        .btn-cyber:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 35px rgba(251, 191, 36, 0.6);
+            background: #fff;
+        }
+
+        .logo-glow {
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+            letter-spacing: 5px;
+        }
+
+        /* Partikel System wie im Leaderboard */
+        .particles-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        .particle { position: absolute; background: var(--accent); border-radius: 50%; opacity: 0.3; filter: blur(2px); animation: floatUp 15s linear infinite; }
+
+        @keyframes floatUp {
+            0% { transform: translateY(110vh) translateX(0); opacity: 0; }
+            10% { opacity: 0.3; }
+            90% { opacity: 0.3; }
+            100% { transform: translateY(-20vh) translateX(100px); opacity: 0; }
+        }
+    </style>
 </head>
 <body>
-    <div class="container d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+    <div class="particles-container" id="particles"></div>
+
+    <div class="container d-flex align-items-center justify-content-center">
         <div class="text-center glass-card p-5">
-            <h1 class="display-3 fw-bold mb-3" style="color: var(--accent)">JUICER BOT</h1>
-            <p class="lead mb-4 opacity-75">Tracke deine Community. Belohne deine Streamer.</p>
-            <a href="/login" class="btn btn-cyber btn-lg px-5 py-3 text-decoration-none">
-                <i class="fab fa-discord me-2"></i> Mit Discord einloggen
-            </a>
+            <div class="mb-4">
+                <i class="fas fa-bolt fa-3x mb-3" style="color: var(--accent);"></i>
+                <h1 class="display-3 fw-bold logo-glow" style="color: var(--accent)">JUICER BOT</h1>
+                <div style="width: 50px; height: 3px; background: var(--accent); margin: 0 auto; border-radius: 2px;"></div>
+            </div>
+            
+            <p class="lead mb-5 opacity-75 fw-light" style="letter-spacing: 1px;">
+                Tracke deine Community. <br>
+                <span class="fw-bold text-white">Belohne deine Streamer.</span>
+            </p>
+
+            <div class="d-grid gap-3">
+                <a href="/login" class="btn btn-cyber btn-lg py-3 text-decoration-none">
+                    <i class="fab fa-discord me-2"></i> Mit Discord einloggen
+                </a>
+                <a href="/leaderboard" class="btn btn-outline-light btn-sm opacity-50 border-0 mt-2">
+                    Direkt zum Leaderboard <i class="fas fa-chevron-right ms-1"></i>
+                </a>
+            </div>
         </div>
     </div>
+
+    <script>
+        function createParticles() {
+            const container = document.getElementById('particles');
+            const particleCount = 15; 
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                const size = Math.random() * 5 + 2 + 'px';
+                particle.style.width = size;
+                particle.style.height = size;
+                particle.style.left = Math.random() * 100 + 'vw';
+                particle.style.animationDuration = Math.random() * 10 + 10 + 's';
+                particle.style.animationDelay = Math.random() * 15 + 's';
+                container.appendChild(particle);
+            }
+        }
+        createParticles();
+    </script>
 </body>
 </html>
-
