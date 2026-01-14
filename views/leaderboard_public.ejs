@@ -282,6 +282,19 @@
             animation: fadeIn 0.8s ease-out;
         }
 
+        /* Hover-Effekt für die Live-Kacheln */
+        .live-now-section .glass-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            background: rgba(255, 255, 255, 0.12) !important;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 0, 85, 0.2);
+            border-color: #ff0055 !important;
+        }
+
+        /* Damit die Transition (Animation) flüssig ist */
+        .live-now-section .glass-card {
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -497,7 +510,7 @@ function renderLeaderboard(userList, timeKey) { %>
                 %>
                     <div class="col-12 col-md-6 col-lg-4">
                         <a href="https://discord.com/channels/<%= guild.id %>/<%= user.voiceChannelId %>" target="_blank" class="text-decoration-none">
-                            <div class="glass-card p-3 d-flex align-items-center border-start border-4" style="border-left-color: #ff0055 !important; transition: all 0.3s ease;">
+                            <div class="glass-card p-3 d-flex align-items-center border-start border-4" style="border-left-color: #ff0055 !important;">
                                 <div class="position-relative me-3">
                                     <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
                                          class="rounded-circle glow-streaming" 
