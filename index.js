@@ -256,6 +256,8 @@ app.get('/dashboard/:guildId', async (req, res) => {
         roles, 
         channels 
     });
+    
+});
 
     app.get('/roadmap', (req, res) => {
     // Hier definierst du deine Projekte
@@ -291,8 +293,6 @@ app.get('/dashboard/:guildId', async (req, res) => {
     const guild = { name: "DEIN SERVER NAME" }; 
 
     res.render('roadmap', { projects, guild });
-});
-    
 });
 
 // --- DASHBOARD ACTIONS ---
@@ -678,6 +678,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
