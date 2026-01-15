@@ -1,0 +1,9 @@
+{
+  "RANKING_TITLE": "STREAM RANKING",
+  "SEARCH_PLACEHOLDER": "Search user...",
+  "TABLE_RANK": "#",
+  "TABLE_USER": "User & Rank",
+  "TABLE_TIME": "Time",
+  "LIVE_NOW": "LIVE NOW",
+  "NEXT_RANK_MSG": "{time} left until next rank"
+}
