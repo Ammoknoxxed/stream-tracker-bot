@@ -6,6 +6,8 @@ const session = require('express-session');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
+const de = require('./locales/de.json');
+const en = require('./locales/en.json');
 
 function log(message) {
     const now = new Date();
@@ -178,16 +180,19 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         const guild = client.guilds.cache.get(guildId);
         if (!guild) return res.status(404).send("Server nicht gefunden.");
         
+        // --- SPRACH-LOGIK ---
+        // Wenn in der URL ?lang=en steht, nimm 'en', sonst 'de'
+        const t = req.query.lang === 'en' ? en : de; 
+        
         const users = await StreamUser.find({ guildId });
         const sortedUsers = getSortedUsers(users);
-        
-        // HIER WIRD DER NICKNAME GELADEN
         const enrichedUsers = await enrichUserData(guild, sortedUsers);
 
         res.render('leaderboard_public', { 
+            t, // Wir geben die gesamte Sprach-Datei an das EJS-Template weiter
             guild, 
-            allTimeLeaderboard: enrichedUsers, // Wir senden die Liste mit Nicknames
-            monthName: "Gesamtstatistik", 
+            allTimeLeaderboard: enrichedUsers, 
+            monthName: t.MONTH_TOTAL || "Gesamtstatistik", // Nutzt Übersetzung oder Fallback
             ranks 
         });
     } catch (err) { 
@@ -260,85 +265,89 @@ app.get('/dashboard/:guildId', async (req, res) => {
 });
 
 app.get('/roadmap', (req, res) => {
+    // 1. Sprache aus URL-Parameter laden (?lang=en oder ?lang=de)
+    const t = req.query.lang === 'en' ? en : de;
+
+    // 2. Projekte-Array nutzt jetzt die Texte aus der geladenen Sprachdatei
     const projects = [
         {
-            title: "Automatisierte Rollen-Vergabe",
-            desc: "Rollen werden sofort im Discord aktualisiert, sobald ein Meilenstein erreicht wird (inklusive Geister-Stream-Schutz).",
-            status: "Fertig",
+            title: t.ROADMAP_PROJECTS.AUTO_ROLES.TITLE,
+            desc: t.ROADMAP_PROJECTS.AUTO_ROLES.DESC,
+            status: t.STATUS_FINISHED,
             progress: 100
         },
         {
-            title: "Admin Dashboard",
-            desc: "Verwaltung von Belohnungen, Kanälen und manuelles Anpassen von Stream-Zeiten über das Web-Interface.",
-            status: "Fertig",
+            title: t.ROADMAP_PROJECTS.DASHBOARD.TITLE,
+            desc: t.ROADMAP_PROJECTS.DASHBOARD.DESC,
+            status: t.STATUS_FINISHED,
             progress: 100
         },
         {
-            title: "Anti-Ghosting System",
-            desc: "Automatischer Scan, der erkennt, wenn ein Stream ohne Zuschauer läuft oder Discord den Status falsch anzeigt.",
-            status: "Fertig",
+            title: t.ROADMAP_PROJECTS.ANTI_GHOST.TITLE,
+            desc: t.ROADMAP_PROJECTS.ANTI_GHOST.DESC,
+            status: t.STATUS_FINISHED,
             progress: 100
         },
         {
-            title: "Level-Up Benachrichtigungen",
-            desc: "Schicke Embed-Nachrichten in den Chat, sobald ein User einen neuen Meilenstein erreicht.",
-            status: "Fertig",
+            title: t.ROADMAP_PROJECTS.LEVEL_UP.TITLE,
+            desc: t.ROADMAP_PROJECTS.LEVEL_UP.DESC,
+            status: t.STATUS_FINISHED,
             progress: 100
         },
         {
-            title: "Interaktives Leaderboard",
-            desc: "Öffentliche Webseite, die alle Streamer nach ihrer Zeit sortiert anzeigt.",
-            status: "Fertig",
+            title: t.ROADMAP_PROJECTS.LEADERBOARD.TITLE,
+            desc: t.ROADMAP_PROJECTS.LEADERBOARD.DESC,
+            status: t.STATUS_FINISHED,
             progress: 100
         },
         {
-            title: "Sprachauswahl",
-            desc: "Internationale Sprachoptionen.",
-            status: "In Arbeit",
-            progress: 5
-        },
-        {
-            title: "Globales Ranking-System",
-            desc: "Internationale Erreichbarkeit des Bots.",
-            status: "In Arbeit",
-            progress: 80
-        },
-        {
-            title: "Selbstständiges Aktivieren/Deaktivieren des Rankings",
-            desc: "User können selbst entscheiden, ob sie am Ranking teilnehmen möchten.",
-            status: "Geplant",
+            title: t.ROADMAP_PROJECTS.I18N.TITLE,
+            desc: t.ROADMAP_PROJECTS.I18N.DESC,
+            status: t.STATUS_WIP,
             progress: 15
         },
         {
-            title: "Eigene Profil-Karten",
-            desc: "User können ihr Hintergrundbild auf der Ranking-Seite personalisieren.",
-            status: "Geplant",
+            title: t.ROADMAP_PROJECTS.GLOBAL_RANK.TITLE,
+            desc: t.ROADMAP_PROJECTS.GLOBAL_RANK.DESC,
+            status: t.STATUS_WIP,
+            progress: 80
+        },
+        {
+            title: t.ROADMAP_PROJECTS.TOGGLE_RANK.TITLE,
+            desc: t.ROADMAP_PROJECTS.TOGGLE_RANK.DESC,
+            status: t.STATUS_PLANNED,
+            progress: 15
+        },
+        {
+            title: t.ROADMAP_PROJECTS.PROFILE_CARDS.TITLE,
+            desc: t.ROADMAP_PROJECTS.PROFILE_CARDS.DESC,
+            status: t.STATUS_PLANNED,
             progress: 0
         },
         {
-            title: "Live-Stream Vorschau",
-            desc: "Ein kleines Fenster, das den aktuellen Stream direkt auf der Website zeigt.",
-            status: "Konzept",
+            title: t.ROADMAP_PROJECTS.PREVIEW.TITLE,
+            desc: t.ROADMAP_PROJECTS.PREVIEW.DESC,
+            status: t.STATUS_CONCEPT,
             progress: 5
         },
         {
-            title: "Streak System",
-            desc: "Individuelle Stream-Streaks werden angezeigt und belohnt",
-            status: "Konzept",
+            title: t.ROADMAP_PROJECTS.STREAKS.TITLE,
+            desc: t.ROADMAP_PROJECTS.STREAKS.DESC,
+            status: t.STATUS_CONCEPT,
             progress: 5
         },
         {
-            title: "OBS Overlay mit Animationen",
-            desc: "Rollen Upgrades werden animiert als OBS Overlay eingebunden",
-            status: "Konzept",
+            title: t.ROADMAP_PROJECTS.OBS.TITLE,
+            desc: t.ROADMAP_PROJECTS.OBS.DESC,
+            status: t.STATUS_CONCEPT,
             progress: 0
         }
     ];
 
-    // Hier setzen wir deinen echten Servernamen ein
     const guild = { name: "JUICER BOT" };
 
-    res.render('roadmap', { projects, guild });
+    // t mit an EJS übergeben
+    res.render('roadmap', { t, projects, guild });
 });
 
 // --- DASHBOARD ACTIONS ---
@@ -724,6 +733,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
