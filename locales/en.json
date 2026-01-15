@@ -1,4 +1,7 @@
 {
+  "LANG_CODE": "en",
+  "UNIT_HR": "hrs",
+  "UNIT_MIN": "min",
   "RANKING_TITLE": "STREAM RANKING",
   "SEARCH_PLACEHOLDER": "Search user...",
   "TABLE_RANK": "#",
