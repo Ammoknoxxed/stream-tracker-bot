@@ -5,5 +5,62 @@
   "TABLE_USER": "User & Rang",
   "TABLE_TIME": "Zeit",
   "LIVE_NOW": "AKTUELL LIVE",
-  "NEXT_RANK_MSG": "Noch {time} bis zum nächsten Rang"
+  "NEXT_RANK_MSG": "Noch {time} bis zum nächsten Rang",
+  "MONTH_TOTAL": "Gesamtstatistik",
+  
+  "STATUS_FINISHED": "Fertig",
+  "STATUS_WIP": "In Arbeit",
+  "STATUS_PLANNED": "Geplant",
+  "STATUS_CONCEPT": "Konzept",
+
+  "ROADMAP_PROJECTS": {
+    "AUTO_ROLES": {
+      "TITLE": "Automatisierte Rollen-Vergabe",
+      "DESC": "Rollen werden sofort im Discord aktualisiert, sobald ein Meilenstein erreicht wird (inklusive Geister-Stream-Schutz)."
+    },
+    "DASHBOARD": {
+      "TITLE": "Admin Dashboard",
+      "DESC": "Verwaltung von Belohnungen, Kanälen und manuelles Anpassen von Stream-Zeiten über das Web-Interface."
+    },
+    "ANTI_GHOST": {
+      "TITLE": "Anti-Ghosting System",
+      "DESC": "Automatischer Scan, der erkennt, wenn ein Stream ohne Zuschauer läuft oder Discord den Status falsch anzeigt."
+    },
+    "LEVEL_UP": {
+      "TITLE": "Level-Up Benachrichtigungen",
+      "DESC": "Schicke Embed-Nachrichten in den Chat, sobald ein User einen neuen Meilenstein erreicht."
+    },
+    "LEADERBOARD": {
+      "TITLE": "Interaktives Leaderboard",
+      "DESC": "Öffentliche Webseite, die alle Streamer nach ihrer Zeit sortiert anzeigt."
+    },
+    "I18N": {
+      "TITLE": "Sprachauswahl",
+      "DESC": "Internationale Sprachoptionen für die gesamte Plattform."
+    },
+    "GLOBAL_RANK": {
+      "TITLE": "Globales Ranking-System",
+      "DESC": "Internationale Erreichbarkeit des Bots."
+    },
+    "TOGGLE_RANK": {
+      "TITLE": "Selbstständiges Aktivieren/Deaktivieren",
+      "DESC": "User können selbst entscheiden, ob sie am Ranking teilnehmen möchten."
+    },
+    "PROFILE_CARDS": {
+      "TITLE": "Eigene Profil-Karten",
+      "DESC": "User können ihr Hintergrundbild auf der Ranking-Seite personalisieren."
+    },
+    "PREVIEW": {
+      "TITLE": "Live-Stream Vorschau",
+      "DESC": "Ein kleines Fenster, das den aktuellen Stream direkt auf der Website zeigt."
+    },
+    "STREAKS": {
+      "TITLE": "Streak System",
+      "DESC": "Individuelle Stream-Streaks werden angezeigt und belohnt."
+    },
+    "OBS": {
+      "TITLE": "OBS Overlay mit Animationen",
+      "DESC": "Rollen Upgrades werden animiert als OBS Overlay eingebunden."
+    }
+  }
 }
