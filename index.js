@@ -292,6 +292,12 @@ app.get('/roadmap', (req, res) => {
             progress: 100
         },
         {
+            title: "Sprachauswahl",
+            desc: "Internationale Sprachoptionen.",
+            status: "In Arbeit",
+            progress: 5
+        },
+        {
             title: "Globales Ranking-System",
             desc: "Internationale Erreichbarkeit des Bots.",
             status: "In Arbeit",
@@ -718,6 +724,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
 
 
 
