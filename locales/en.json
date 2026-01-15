@@ -5,5 +5,62 @@
   "TABLE_USER": "User & Rank",
   "TABLE_TIME": "Time",
   "LIVE_NOW": "LIVE NOW",
-  "NEXT_RANK_MSG": "{time} left until next rank"
+  "NEXT_RANK_MSG": "{time} left until next rank",
+  "MONTH_TOTAL": "Global Statistics",
+  
+  "STATUS_FINISHED": "Finished",
+  "STATUS_WIP": "In Progress",
+  "STATUS_PLANNED": "Planned",
+  "STATUS_CONCEPT": "Concept",
+
+  "ROADMAP_PROJECTS": {
+    "AUTO_ROLES": {
+      "TITLE": "Automated Role Assignment",
+      "DESC": "Roles are updated instantly on Discord as soon as a milestone is reached (includes ghost-stream protection)."
+    },
+    "DASHBOARD": {
+      "TITLE": "Admin Dashboard",
+      "DESC": "Manage rewards, channels, and manually adjust stream times via the web interface."
+    },
+    "ANTI_GHOST": {
+      "TITLE": "Anti-Ghosting System",
+      "DESC": "Automated scan that detects if a stream is running without viewers or if Discord shows the wrong status."
+    },
+    "LEVEL_UP": {
+      "TITLE": "Level-Up Notifications",
+      "DESC": "Send embed messages to the chat as soon as a user reaches a new milestone."
+    },
+    "LEADERBOARD": {
+      "TITLE": "Interactive Leaderboard",
+      "DESC": "Public website that displays all streamers sorted by their stream time."
+    },
+    "I18N": {
+      "TITLE": "Language Selection",
+      "DESC": "International language options for the entire platform."
+    },
+    "GLOBAL_RANK": {
+      "TITLE": "Global Ranking System",
+      "DESC": "International accessibility of the bot across different regions."
+    },
+    "TOGGLE_RANK": {
+      "TITLE": "Manual Opt-In/Out",
+      "DESC": "Users can decide for themselves whether they want to participate in the ranking."
+    },
+    "PROFILE_CARDS": {
+      "TITLE": "Custom Profile Cards",
+      "DESC": "Users can personalize their background image on the ranking page."
+    },
+    "PREVIEW": {
+      "TITLE": "Live Stream Preview",
+      "DESC": "A small window showing the current stream directly on the website."
+    },
+    "STREAKS": {
+      "TITLE": "Streak System",
+      "DESC": "Individual stream streaks are tracked and rewarded."
+    },
+    "OBS": {
+      "TITLE": "OBS Overlay with Animations",
+      "DESC": "Role upgrades integrated as animated OBS overlays."
+    }
+  }
 }
