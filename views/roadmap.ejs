@@ -78,7 +78,11 @@
     <div class="particles-container" id="particles"></div>
 
     <div class="container py-5" style="max-width: 800px;">
-        <a href="/" class="back-btn mb-4 d-inline-block"><i class="fas fa-arrow-left me-2"></i> Zurück zum Ranking</a>
+        <a href="/leaderboard/<%= guild.id %>" 
+           onclick="if(document.referrer.includes('/leaderboard/')){ history.back(); return false; }" 
+           class="back-btn mb-4 d-inline-block">
+            <i class="fas fa-arrow-left me-2"></i> Zurück zum Ranking
+        </a>
         
         <div class="text-center mb-5">
             <h1 class="display-4 fw-bold" style="color: var(--accent); letter-spacing: 3px; text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);">ROADMAP</h1>
