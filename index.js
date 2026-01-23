@@ -262,6 +262,12 @@ app.get('/dashboard/:guildId', async (req, res) => {
 app.get('/roadmap', (req, res) => {
     const projects = [
         {
+            title: "AI Stream Erkennung",
+            desc: "Streams werden automatisch auf Content untersucht und bei Verstoß gegen die Ranking-Regeln wird der User aus dem Channel gekickt/Zeit automatisch abgezogen.",
+            status: "Geplant",
+            progress: 0
+        },
+        {
             title: "Automatisierte Rollen-Vergabe",
             desc: "Rollen werden sofort im Discord aktualisiert, sobald ein Meilenstein erreicht wird (inklusive Geister-Stream-Schutz).",
             status: "Fertig",
@@ -718,3 +724,4 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Bot Login
 client.login(process.env.TOKEN);
+
