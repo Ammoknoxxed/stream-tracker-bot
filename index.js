@@ -38,9 +38,9 @@ const ranks = [
     { min: 0,     name: "Casino Gast", color: "#95a5a6" }
 ];
 
-// --- CHANNEL IDS (NEU) ---
-const VERIFY_CHANNEL_ID = '1459882167848145073'; // Hier schreiben User !verify
-const MOD_CHANNEL_ID = '1473125691058032830';    // Hier klicken Mods
+// --- CHANNEL IDS ---
+const VERIFY_CHANNEL_ID = '1459882167848145073'; 
+const MOD_CHANNEL_ID = '1473125691058032830';    
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -61,6 +61,17 @@ const streamUserSchema = new mongoose.Schema({
     lastNotifiedRank: { type: String, default: "Casino Gast" }
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
+
+// --- NEU: WARNING MODEL ---
+const warningSchema = new mongoose.Schema({
+    userId: String,
+    guildId: String,
+    moderatorId: String,
+    reason: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const Warning = mongoose.model('Warning', warningSchema);
+
 
 // --- 2. BOT SETUP ---
 const client = new Client({
@@ -246,7 +257,6 @@ app.get('/dashboard/:guildId', async (req, res) => {
 });
 
 app.get('/roadmap', (req, res) => {
-    // Deine Roadmap Logik hier... (Gekürzt für Übersichtlichkeit, Roadmap Code bleibt gleich)
     const projects = []; 
     const guild = { name: "JUICER BOT" };
     res.render('roadmap', { projects, guild });
@@ -326,6 +336,139 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
+    // --- NEU: MODERATION SYSTEM COMMANDS ---
+
+    // 1. VOICE KICK (!kickvoice @User [Grund/Nachricht])
+    if (message.content.startsWith('!kick')) {
+        // Berechtigungs-Check (Moderatoren brauchen "Mitglieder verschieben" Recht)
+        if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
+            return message.reply("⛔ Du hast keine Berechtigung, um Leute zu kicken.");
+        }
+
+        const args = message.content.split(' ');
+        const targetUser = message.mentions.members.first();
+        
+        if (!targetUser) {
+            return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!kick @User`");
+        }
+
+        // Grund ermitteln (Alles nach dem User-Mention)
+        // args[0] = !kickvoice, args[1] = @User, args[2...] = Text
+        let customMessage = args.slice(2).join(' ');
+        
+        // Standard-Nachricht, falls keine eigene angegeben wurde
+        const standardMessage = `🚨 **ACHTUNG:** Du wurdest aus dem Voice-Channel entfernt.\n\n**Grund:** Streamen eines nicht verifizierten / unzulässigen Casino-Anbieters.\nBitte halte dich an die Regeln: Nur Orangebonus-Partner oder per \`!verify "ANBIETER"\` freigeschaltete Seiten.\n\nBeim nächsten Verstoß drohen weitere Sanktionen.`;
+
+        const finalMessage = customMessage ? `🚨 **MODERATION HINWEIS:**\n\n${customMessage}` : standardMessage;
+
+        // Prüfen, ob User im Voice ist
+        if (!targetUser.voice.channel) {
+            return message.reply("⚠️ Der User befindet sich aktuell in keinem Voice-Channel.");
+        }
+
+        try {
+            // 1. DM Senden
+            await targetUser.send(finalMessage).catch(() => {
+                message.channel.send(`⚠️ Konnte dem User keine DM senden (DMs geschlossen), aber er wird gekickt.`);
+            });
+
+            // 2. Kicken (Disconnecten durch Setzen des Channels auf null)
+            await targetUser.voice.setChannel(null);
+
+            // 3. Bestätigung im Chat
+            const embed = new EmbedBuilder()
+                .setTitle('🔇 Voice Kick Erfolgreich')
+                .setDescription(`**User:** ${targetUser}\n**Mod:** ${message.author}\n**Grund:** ${customMessage || "Unzulässiger Anbieter (Standard)"}`)
+                .setColor('#e74c3c')
+                .setTimestamp();
+            
+            message.reply({ embeds: [embed] });
+            log(`🛡️ KICK: ${message.author.username} hat ${targetUser.user.username} aus dem Voice gekickt.`);
+
+        } catch (err) {
+            console.error(err);
+            message.reply("❌ Fehler beim Kicken.");
+        }
+        return;
+    }
+
+    // 2. WARN (!warn @User [Grund])
+    if (message.content.startsWith('!warn')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) { // Oder Administrator
+            return message.reply("⛔ Du hast keine Berechtigung zu verwarnen.");
+        }
+
+        const args = message.content.split(' ');
+        const targetUser = message.mentions.members.first();
+
+        if (!targetUser) {
+            return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!warn @User Unzulässiger Stream`");
+        }
+
+        let reason = args.slice(2).join(' ') || "Verstoß gegen die Serverregeln";
+
+        try {
+            // In DB speichern
+            await Warning.create({
+                userId: targetUser.id,
+                guildId: message.guild.id,
+                moderatorId: message.author.id,
+                reason: reason
+            });
+
+            // DM Senden
+            await targetUser.send(`⚠️ **VERWARNUNG**\nDu wurdest auf **${message.guild.name}** verwarnt.\n**Grund:** ${reason}`).catch(() => {});
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚠️ User Verwarnt')
+                .setDescription(`**User:** ${targetUser}\n**Mod:** ${message.author}\n**Grund:** ${reason}`)
+                .setColor('Orange')
+                .setTimestamp();
+
+            message.reply({ embeds: [embed] });
+            log(`🛡️ WARN: ${targetUser.user.username} verwarnt von ${message.author.username}. Grund: ${reason}`);
+
+        } catch (err) {
+            console.error(err);
+            message.reply("❌ Fehler beim Speichern der Verwarnung.");
+        }
+        return;
+    }
+
+    // 3. WARNINGS PRÜFEN (!warnings @User)
+    if (message.content.startsWith('!warnings')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
+
+        const targetUser = message.mentions.members.first() || message.member; // Ohne Mention = Eigene Warnings
+
+        const warnings = await Warning.find({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
+
+        if (warnings.length === 0) {
+            return message.reply(`✅ ${targetUser.user.username} hat eine weiße Weste (0 Verwarnungen).`);
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Verwarnungen für ${targetUser.user.username}`)
+            .setColor('Orange')
+            .setFooter({ text: `Gesamt: ${warnings.length}` });
+
+        // Nur die letzten 10 anzeigen, sonst wird die Message zu lang
+        const lastWarnings = warnings.slice(0, 10);
+        let desc = "";
+        
+        lastWarnings.forEach((w, index) => {
+            const date = w.timestamp.toLocaleDateString('de-DE');
+            desc += `**${index + 1}.** ${date} - Grund: *${w.reason}* (Mod ID: ${w.moderatorId})\n`;
+        });
+
+        embed.setDescription(desc);
+        message.reply({ embeds: [embed] });
+        return;
+    }
+
+    // --- MODERATION SYSTEM ENDE ---
+
+
     // --- ADMIN SYNC ---
     if (message.content === '!sync') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("Admin only.");
@@ -334,15 +477,13 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Sync abgeschlossen.`);
     }
 
-// --- NEU: VERIFY SYSTEM START ---
+    // --- VERIFY SYSTEM START ---
     if (message.channel.id === VERIFY_CHANNEL_ID && message.content.startsWith('!verify')) {
         
-        // 1. Die Nachricht des Users SOFORT löschen, damit der Chat sauber bleibt
         await message.delete().catch(() => {}); 
 
         const args = message.content.split(' ');
         if (args.length < 2) {
-            // Fehlermeldung (löscht sich nach 5 Sekunden)
             const msg = await message.channel.send(`⚠️ ${message.author}, bitte gib einen Casinoanbieter an. Beispiel: \`!verify Stake\``);
             setTimeout(() => { msg.delete().catch(() => {}); }, 5000);
             return;
@@ -350,19 +491,16 @@ client.on('messageCreate', async (message) => {
 
         const providerName = args.slice(1).join(" "); 
 
-        // Mod Channel finden
         const modChannel = message.guild.channels.cache.get(MOD_CHANNEL_ID);
         if (!modChannel) return log("❌ FEHLER: Mod-Channel ID für Verify ist falsch konfiguriert!");
 
-        // Embed für die Moderatoren bauen
         const embed = new EmbedBuilder()
             .setTitle('🎰 Neue Casino-Verifizierung')
             .setDescription(`**User:** ${message.author} (${message.author.tag})\n**Möchte verifiziert werden für:** ${providerName}`)
-            .setColor('#f1c40f') // Gold
+            .setColor('#f1c40f') 
             .setThumbnail(message.author.displayAvatarURL())
             .setTimestamp();
 
-        // Buttons erstellen
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -377,8 +515,6 @@ client.on('messageCreate', async (message) => {
 
         await modChannel.send({ embeds: [embed], components: [row] });
         
-        // 2. Kurze Bestätigung für den User senden (kein Reply, da Ursprungsnachricht weg ist)
-        // Diese Nachricht löscht sich nach 3 Sekunden automatisch
         const confirmationMsg = await message.channel.send(`✅ ${message.author}, deine Anfrage für **${providerName}** wurde an die Moderatoren gesendet!`);
         setTimeout(() => { confirmationMsg.delete().catch(() => {}); }, 3000);
         
@@ -388,7 +524,6 @@ client.on('messageCreate', async (message) => {
 
     // --- RANK COMMAND ---
     if (message.content.startsWith('!rank')) {
-        // !rank funktioniert auch im Verify-Channel oder in einem anderen (hier auf VERIFY_CHANNEL_ID gesetzt wie angefordert)
         if (message.channel.id !== VERIFY_CHANNEL_ID) return;
         
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
@@ -518,7 +653,7 @@ setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
     
-    // Status Channel für Level-Ups (Benutzt Verify Channel als Fallback, oder ändere die ID hier falls nötig)
+    // Status Channel für Level-Ups
     const statusChannelId = VERIFY_CHANNEL_ID; 
 
     log(`🔍 SYSTEM-CHECK: Starte Routine-Scan für ${allUsers.length} Profile.`);
@@ -581,18 +716,16 @@ setInterval(async () => {
     log(`✅ SYSTEM-CHECK: Scan abgeschlossen.`);
 }, 5 * 60000);
 
-// --- INTERACTION HANDLER (NEU: FÜR BUTTONS) ---
+// --- INTERACTION HANDLER (BUTTONS) ---
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // Nur verify Buttons beachten
     if (!interaction.customId.startsWith('verify_')) return;
 
-    // Button ID Struktur: verify_ACTION_USERID_PROVIDERNAME
     const parts = interaction.customId.split('_');
-    const action = parts[1]; // "accept" oder "deny"
+    const action = parts[1]; 
     const targetUserId = parts[2];
-    const providerName = parts.slice(3).join('_'); // Zusammenfügen, falls Name "_" enthält
+    const providerName = parts.slice(3).join('_'); 
 
     const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
 
@@ -601,13 +734,12 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (action === 'deny') {
-        // --- ABLEHNEN ---
         await targetMember.send(`❌ Deine Verifizierung für **${providerName}** wurde leider abgelehnt.`).catch(() => {});
         
         const deniedEmbed = new EmbedBuilder()
             .setTitle('Verifizierung Abgelehnt')
             .setDescription(`Anfrage für **${providerName}** von ${targetMember.user} wurde abgelehnt.`)
-            .setColor('#e74c3c') // Rot
+            .setColor('#e74c3c') 
             .setFooter({ text: `Abgelehnt von ${interaction.user.username}` })
             .setTimestamp();
 
@@ -616,18 +748,15 @@ client.on('interactionCreate', async (interaction) => {
     } 
     
     else if (action === 'accept') {
-        // --- AKZEPTIEREN ---
-        await interaction.deferUpdate(); // Zeit gewinnen
+        await interaction.deferUpdate(); 
 
-        // 1. Rolle suchen (Case Insensitive)
         let role = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === providerName.toLowerCase());
 
-        // 2. Rolle erstellen falls nicht vorhanden
         if (!role) {
             try {
                 role = await interaction.guild.roles.create({
                     name: providerName,
-                    color: '#2ecc71', // Grün für Verified Casinos
+                    color: '#2ecc71', 
                     reason: `Verifizierung durch ${interaction.user.tag}`
                 });
                 log(`🛡️ VERIFY: Neue Rolle erstellt: "${providerName}"`);
@@ -637,7 +766,6 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // 3. Rolle zuweisen
         try {
             if (targetMember.roles.cache.has(role.id)) {
                  await interaction.followUp({ content: "⚠️ Der User hat diese Rolle bereits.", ephemeral: true });
@@ -645,14 +773,12 @@ client.on('interactionCreate', async (interaction) => {
                 await targetMember.roles.add(role);
             }
 
-            // User benachrichtigen
             await targetMember.send(`✅ **Glückwunsch!** Du wurdest für **${providerName}** verifiziert und hast die Rolle erhalten.`).catch(() => {});
 
-            // Mod Nachricht updaten
             const acceptedEmbed = new EmbedBuilder()
                 .setTitle('Verifizierung Erfolgreich')
                 .setDescription(`Anfrage für **${role.name}** von ${targetMember.user} wurde akzeptiert.\nRolle wurde zugewiesen.`)
-                .setColor('#2ecc71') // Grün
+                .setColor('#2ecc71') 
                 .setFooter({ text: `Bestätigt von ${interaction.user.username}` })
                 .setTimestamp();
 
@@ -675,14 +801,12 @@ client.once('ready', async () => {
         try {
             log('🔄 Starte Initialisierungs-Scan...');
             
-            // DB Reset
             const resetResult = await StreamUser.updateMany(
                 {}, 
                 { isStreaming: false, lastStreamStart: null }
             );
             log(`🧹 Datenbank bereinigt: ${resetResult.modifiedCount} Profile zurückgesetzt.`);
 
-            // Aktiver Scan
             let activeFound = 0;
             for (const guild of client.guilds.cache.values()) {
                 await guild.members.fetch().catch(() => {});
@@ -734,4 +858,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
