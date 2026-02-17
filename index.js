@@ -466,6 +466,45 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // 4. LETZTE WARNUNG LÖSCHEN (!delwarn @User)
+    if (message.content.startsWith('!delwarn')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
+
+        const targetUser = message.mentions.members.first();
+        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!delwarn @User`");
+
+        // Wir suchen die allerletzte Warnung (sortiert nach Zeit absteigend)
+        const lastWarning = await Warning.findOne({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
+
+        if (!lastWarning) {
+            return message.reply("✅ Dieser User hat keine Verwarnungen, die man löschen könnte.");
+        }
+
+        await Warning.findByIdAndDelete(lastWarning._id);
+        
+        log(`🗑️ DELWARN: ${message.author.username} hat die letzte Verwarnung von ${targetUser.user.username} gelöscht.`);
+        return message.reply(`✅ Die letzte Verwarnung von **${targetUser.user.username}** wurde entfernt.`);
+    }
+
+    // 5. ALLE WARNUNGEN LÖSCHEN (!clearwarnings @User)
+    if (message.content.startsWith('!clearwarnings')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return message.reply("⛔ Nur Administratoren können alle Verwarnungen löschen.");
+        }
+
+        const targetUser = message.mentions.members.first();
+        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!clearwarnings @User`");
+
+        const result = await Warning.deleteMany({ userId: targetUser.id, guildId: message.guild.id });
+
+        if (result.deletedCount === 0) {
+            return message.reply("✅ Dieser User hatte keine Verwarnungen.");
+        }
+
+        log(`🗑️ CLEAR: ${message.author.username} hat alle ${result.deletedCount} Verwarnungen von ${targetUser.user.username} gelöscht.`);
+        return message.reply(`✅ Alle **${result.deletedCount}** Verwarnungen von **${targetUser.user.username}** wurden unwiderruflich gelöscht.`);
+    }
+
     // --- MODERATION SYSTEM ENDE ---
 
 
@@ -858,3 +897,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
