@@ -334,23 +334,27 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Sync abgeschlossen.`);
     }
 
-    // --- NEU: VERIFY SYSTEM START ---
+// --- NEU: VERIFY SYSTEM START ---
     if (message.channel.id === VERIFY_CHANNEL_ID && message.content.startsWith('!verify')) {
+        
+        // 1. Die Nachricht des Users SOFORT löschen, damit der Chat sauber bleibt
+        await message.delete().catch(() => {}); 
+
         const args = message.content.split(' ');
         if (args.length < 2) {
-            // Nachricht nach 5 Sekunden löschen
-            const msg = await message.reply("⚠️ Bitte gib einen Casinoanbieter an. Beispiel: `!verify Stake`");
-            setTimeout(() => { msg.delete().catch(() => {}); message.delete().catch(() => {}); }, 5000);
+            // Fehlermeldung (löscht sich nach 5 Sekunden)
+            const msg = await message.channel.send(`⚠️ ${message.author}, bitte gib einen Casinoanbieter an. Beispiel: \`!verify Stake\``);
+            setTimeout(() => { msg.delete().catch(() => {}); }, 5000);
             return;
         }
 
-        const providerName = args.slice(1).join(" "); // Erlaubt auch Namen mit Leerzeichen
+        const providerName = args.slice(1).join(" "); 
 
         // Mod Channel finden
         const modChannel = message.guild.channels.cache.get(MOD_CHANNEL_ID);
         if (!modChannel) return log("❌ FEHLER: Mod-Channel ID für Verify ist falsch konfiguriert!");
 
-        // Embed für die Moderatoren
+        // Embed für die Moderatoren bauen
         const embed = new EmbedBuilder()
             .setTitle('🎰 Neue Casino-Verifizierung')
             .setDescription(`**User:** ${message.author} (${message.author.tag})\n**Möchte verifiziert werden für:** ${providerName}`)
@@ -373,9 +377,12 @@ client.on('messageCreate', async (message) => {
 
         await modChannel.send({ embeds: [embed], components: [row] });
         
-        // Reaktion zur Bestätigung
-        await message.react('⏳');
-        return; // Ende für !verify
+        // 2. Kurze Bestätigung für den User senden (kein Reply, da Ursprungsnachricht weg ist)
+        // Diese Nachricht löscht sich nach 3 Sekunden automatisch
+        const confirmationMsg = await message.channel.send(`✅ ${message.author}, deine Anfrage für **${providerName}** wurde an die Moderatoren gesendet!`);
+        setTimeout(() => { confirmationMsg.delete().catch(() => {}); }, 3000);
+        
+        return; 
     }
     // --- VERIFY SYSTEM ENDE ---
 
@@ -727,3 +734,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
