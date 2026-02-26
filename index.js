@@ -762,6 +762,8 @@ async function handleStreamStop(userId, guildId, isAutoStop = false) {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
+    const BAN_ROLE_ID = '1476589330301714482'; // Rolle für Stream-Sperre
+
     if (oldState.channelId === newState.channelId && oldState.streaming === newState.streaming) {
         return;
     }
@@ -770,14 +772,45 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const channelsToCheck = [oldState.channel, newState.channel].filter(Boolean);
 
     for (const channel of channelsToCheck) {
-        const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
+        // Prüfen, ob dieser Channel für das Tracking freigegeben ist
+        const isAllowedChannel = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
         const humansInChannel = channel.members.filter(m => !m.user.bot);
         const hasViewers = humansInChannel.size >= 2;
 
         for (const [memberId, member] of channel.members) {
             if (member.user.bot) continue;
 
-            const isStreamingNow = member.voice.streaming && isAllowed && hasViewers;
+            // --- 1. CHECK AUF STREAM-SPERRE ---
+            // Wenn der User die Sperr-Rolle hat UND im Tracking-Channel streamt -> KICK
+            if (member.roles.cache.has(BAN_ROLE_ID) && isAllowedChannel && member.voice.streaming) {
+                try {
+                    log(`🚫 SPERRE: ${member.user.username} wurde aus dem Voice gekickt (Stream-Sperre aktiv).`);
+                    
+                    // User sofort aus dem Voice werfen
+                    await member.voice.setChannel(null);
+                    
+                    // Information an den User senden
+                    await member.send(`⚠️ **Stream-Sperre:** Du hast aktuell eine Sperre für Streams in den offiziellen Casino-Channels. Dein Stream wurde automatisch beendet.`).catch(() => {});
+                    
+                    // Log in den Moderations-Channel senden
+                    const logChannel = client.channels.cache.get(STREAM_LOG_CHANNEL_ID);
+                    if (logChannel) {
+                        const banEmbed = new EmbedBuilder()
+                            .setTitle('🚫 Stream-Sperre umgangen')
+                            .setDescription(`User **${member.user.username}** wurde automatisch gekickt.\n**Grund:** Stream trotz aktiver Sperr-Rolle in einem Tracking-Channel.`)
+                            .setColor('#ff0000')
+                            .setTimestamp();
+                        logChannel.send({ embeds: [banEmbed] }).catch(() => {});
+                    }
+                    
+                    continue; // Springe zum nächsten Member, dieser hier wurde entfernt
+                } catch (err) {
+                    log(`❌ Fehler beim Kick von ${member.user.username}: ${err.message}`);
+                }
+            }
+
+            // --- 2. NORMALES TRACKING ---
+            const isStreamingNow = member.voice.streaming && isAllowedChannel && hasViewers;
             const userData = await StreamUser.findOne({ userId: memberId, guildId });
 
             if (isStreamingNow) {
@@ -972,5 +1005,6 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
 
