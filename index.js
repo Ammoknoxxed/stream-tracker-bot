@@ -212,10 +212,10 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         const sortedMonthly = getSortedUsers(users, 'effectiveMonthly').filter(u => u.effectiveMonthly > 0 || u.isStreaming);
         const enrichedMonthly = await enrichUserData(guild, sortedMonthly);
 
-        res.render('leaderboard', { 
+        res.render('leaderboard_public', { // HIER GEÄNDERT!
             guild, 
             allTimeLeaderboard: enrichedAllTime, 
-            monthlyLeaderboard: enrichedMonthly, // Übergeben an EJS
+            monthlyLeaderboard: enrichedMonthly, 
             monthName: "Gesamtstatistik", 
             ranks 
         });
@@ -936,3 +936,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
