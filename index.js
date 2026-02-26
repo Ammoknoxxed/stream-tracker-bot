@@ -273,6 +273,47 @@ app.get('/roadmap', (req, res) => {
     res.render('roadmap', { projects, guild });
 });
 
+app.get('/profile/:guildId/:userId', async (req, res) => {
+    try {
+        const { guildId, userId } = req.params;
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) return res.status(404).send("Server nicht gefunden.");
+
+        const userData = await StreamUser.findOne({ userId, guildId });
+        if (!userData) return res.status(404).send("User nicht gefunden.");
+
+        // Berechne aktuelle Zeit (inklusive laufendem Stream)
+        const now = new Date();
+        let effectiveTotal = userData.totalMinutes;
+        if (userData.isStreaming && userData.lastStreamStart) {
+            const diff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
+            if (diff > 0) effectiveTotal += diff;
+        }
+
+        // Aktuellstes Profilbild & Namen von Discord holen
+        let displayName = userData.username;
+        let avatar = userData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+        try {
+            const member = await guild.members.fetch(userId);
+            if (member) {
+                displayName = member.displayName;
+                avatar = member.displayAvatarURL({ size: 512, extension: 'png' });
+            }
+        } catch (e) {
+            // Falls User den Server verlassen hat, nutzen wir die alten DB-Daten
+        }
+
+        res.render('profile', { 
+            guild, 
+            userData: { ...userData.toObject(), effectiveTotal, displayName, avatar }, 
+            ranks 
+        });
+    } catch (err) { 
+        console.error(err);
+        res.status(500).send("Fehler beim Laden des Profils."); 
+    }
+});
+
 // --- DASHBOARD ACTIONS ---
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
@@ -972,4 +1013,5 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
