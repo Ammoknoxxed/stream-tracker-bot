@@ -14,7 +14,7 @@ function log(message) {
     console.log(`[${time}] ${message}`);
 }
 
-// --- 0. KONFIGURATION ---
+// --- 0. KONFIGURATION YEEEES ---
 
 // Ränge
 const ranks = [
@@ -1029,3 +1029,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
