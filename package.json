@@ -14,7 +14,8 @@
     "express-session": "^1.17.3",
     "mongoose": "^8.0.3",
     "passport": "^0.7.0",
-    "passport-discord": "^0.1.4"
+    "passport-discord": "^0.1.4",
+    "node-cron": "^3.0.3"
   },
   "engines": {
     "node": "18.x"
