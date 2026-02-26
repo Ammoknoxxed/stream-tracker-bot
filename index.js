@@ -39,8 +39,9 @@ const ranks = [
 ];
 
 // --- CHANNEL IDS ---
-const VERIFY_CHANNEL_ID = '1459882167848145073'; 
-const MOD_CHANNEL_ID = '1473125691058032830';    
+const VERIFY_CHANNEL_ID = '1459882167848145073';     // User tippen hier !verify und !rank
+const VERIFY_MOD_CHANNEL_ID = '1473125691058032830'; // Hier landen die Verify-Anfragen für die Moderatoren
+const TIME_MOD_CHANNEL_ID = '1021086309860782191';   // Hier können Moderatoren Zeiten per Command anpassen
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -505,6 +506,69 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Alle **${result.deletedCount}** Verwarnungen von **${targetUser.user.username}** wurden unwiderruflich gelöscht.`);
     }
 
+    // --- 6. NEU: ZEITEN PER DISCORD ANPASSEN ---
+    if (['!addtime', '!removetime', '!resettime'].some(cmd => message.content.startsWith(cmd))) {
+        // 1. Check: Ist es der ausgewiesene Mod-Channel für das Zeiten-Management?
+        if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
+
+        // 2. Check: Hat der User Mod-Rechte? (ManageMessages reicht als Check)
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+            return message.reply("⛔ Du hast keine Berechtigung für diesen Command.");
+        }
+
+        const args = message.content.split(' ');
+        const command = args[0].toLowerCase();
+        const targetUser = message.mentions.members.first();
+        
+        if (!targetUser) {
+            return message.reply(`⚠️ Bitte markiere einen User. Beispiel: \`${command} @User ${command === '!resettime' ? '' : '60'}\``);
+        }
+
+        // Finde den User in der DB (oder erstelle ihn, falls er noch nie getrackt wurde)
+        let userData = await StreamUser.findOne({ userId: targetUser.id, guildId: message.guild.id });
+        if (!userData) {
+            userData = new StreamUser({ 
+                userId: targetUser.id, 
+                guildId: message.guild.id, 
+                username: targetUser.user.username, 
+                totalMinutes: 0 
+            });
+        }
+
+        if (command === '!addtime') {
+            const minutes = parseInt(args[2]);
+            if (isNaN(minutes) || minutes <= 0) return message.reply("⚠️ Bitte gib eine gültige Minutenzahl an. Beispiel: `!addtime @User 60`");
+            
+            userData.totalMinutes += minutes;
+            await userData.save();
+            await syncUserRoles(userData); // Direkt Rollen updaten
+            
+            log(`⚙️ MOD-CMD: ${message.author.username} hat ${targetUser.user.username} ${minutes} Min. hinzugefügt.`);
+            return message.reply(`✅ **Erfolg:** Dem User ${targetUser} wurden **${minutes} Minuten** hinzugefügt. (Neue Gesamtzeit: \`${Math.floor(userData.totalMinutes / 60)}h ${userData.totalMinutes % 60}m\`)`);
+        }
+
+        if (command === '!removetime') {
+            const minutes = parseInt(args[2]);
+            if (isNaN(minutes) || minutes <= 0) return message.reply("⚠️ Bitte gib eine gültige Minutenzahl an. Beispiel: `!removetime @User 30`");
+            
+            // Zeit abziehen, aber nicht unter 0 fallen lassen
+            userData.totalMinutes = Math.max(0, userData.totalMinutes - minutes);
+            await userData.save();
+            await syncUserRoles(userData); // Rollen anpassen (auch bei Downgrades!)
+            
+            log(`⚙️ MOD-CMD: ${message.author.username} hat ${targetUser.user.username} ${minutes} Min. abgezogen.`);
+            return message.reply(`📉 **Erfolg:** Dem User ${targetUser} wurden **${minutes} Minuten** abgezogen. (Neue Gesamtzeit: \`${Math.floor(userData.totalMinutes / 60)}h ${userData.totalMinutes % 60}m\`)`);
+        }
+
+        if (command === '!resettime') {
+            userData.totalMinutes = 0;
+            await userData.save();
+            await syncUserRoles(userData); // Rollt den User komplett auf Level 0 zurück
+            
+            log(`🗑️ MOD-CMD: ${message.author.username} hat die Zeit von ${targetUser.user.username} auf 0 gesetzt.`);
+            return message.reply(`🗑️ **Reset:** Die Zeit von ${targetUser} wurde komplett auf **0** gesetzt. Alle erspielten Rollen wurden entfernt.`);
+        }
+    }
     // --- MODERATION SYSTEM ENDE ---
 
 
@@ -530,7 +594,8 @@ client.on('messageCreate', async (message) => {
 
         const providerName = args.slice(1).join(" "); 
 
-        const modChannel = message.guild.channels.cache.get(MOD_CHANNEL_ID);
+        // NUTZT JETZT VERIFY_MOD_CHANNEL_ID
+        const modChannel = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
         if (!modChannel) return log("❌ FEHLER: Mod-Channel ID für Verify ist falsch konfiguriert!");
 
         const embed = new EmbedBuilder()
@@ -897,4 +962,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
