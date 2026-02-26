@@ -69,6 +69,12 @@
             color: #ffffff !important;
             font-weight: 700;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            transition: color 0.2s ease;
+        }
+
+        .username-bright:hover {
+            color: var(--accent) !important;
+            cursor: pointer;
         }
 
         .rank-name-bright {
@@ -379,7 +385,9 @@ function renderLeaderboard(userList, timeKey) { %>
                     <img src="/images/ranks/<%= info.current.img %>" class="rank-badge-podium">
                 </div>
 
-                <h4 class="mb-0 text-truncate username-bright"><%= user.nickname || user.displayName || user.username %></h4>
+                <h4 class="mb-0 text-truncate">
+                    <a href="/profile/<%= guild.id %>/<%= user.userId %>" class="text-decoration-none username-bright"><%= user.nickname || user.displayName || user.username %></a>
+                </h4>
                 <div class="opacity-50 mb-2" style="font-size: 0.7rem; font-weight: 400; line-height: 1;">@<%= user.username %></div>
 
                 <div class="rank-name-bright" style="color: <%= info.current.color %>; font-size: 0.75rem; margin-bottom: 5px;">
@@ -440,7 +448,7 @@ function renderLeaderboard(userList, timeKey) { %>
                             <div class="flex-grow-1" style="max-width: 280px;">
                                 <div class="d-flex align-items-center mb-1">
                                     <div class="d-flex flex-column">
-                                        <span class="username-bright leading-tight"><%= user.nickname || user.displayName || user.username %></span>
+                                        <a href="/profile/<%= guild.id %>/<%= user.userId %>" class="text-decoration-none username-bright leading-tight"><%= user.nickname || user.displayName || user.username %></a>
                                         <span class="opacity-50" style="font-size: 0.65rem; font-weight: 400; margin-top: -2px;">@<%= user.username %></span>
                                     </div>
                                     <% if(user.isStreaming) { %>
