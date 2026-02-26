@@ -502,7 +502,7 @@ function renderLeaderboard(userList, timeKey, tableId) { %>
     </div>
 
     <div id="view-monthly" style="display: none;">
-        <% if(monthlyLeaderboard.length > 0) { %>
+        <% if(typeof monthlyLeaderboard !== 'undefined' && monthlyLeaderboard.length > 0) { %>
             <% renderLeaderboard(monthlyLeaderboard, 'effectiveMonthly', 'table-monthly'); %>
         <% } else { %>
             <div class="glass-card p-5 text-center mt-4">
