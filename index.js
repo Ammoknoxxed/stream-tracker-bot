@@ -569,6 +569,42 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    if (message.content.startsWith('!addtimeall')) {
+        if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
+
+        const args = message.content.split(' ');
+        const targetMembers = message.mentions.members;
+        const minutes = parseInt(args[args.length - 1]);
+
+        if (targetMembers.size === 0 || isNaN(minutes) || minutes <= 0) {
+            return message.reply("⚠️ **Fehler:** Bitte markiere die User und nenne am Ende die Minuten.\nBeispiel: `!addtimeall @User1 @User2 60` (Zahl muss ganz am Ende stehen).");
+        }
+
+        try {
+            const userIds = targetMembers.map(m => m.id);
+            
+            // MongoDB-Update für alle User gleichzeitig
+            await StreamUser.updateMany(
+                { userId: { $in: userIds }, guildId: message.guild.id },
+                { $inc: { totalMinutes: minutes, monthlyMinutes: minutes } }
+            );
+
+            // Rollen-Sync für alle
+            for (const member of targetMembers.values()) {
+                const userData = await StreamUser.findOne({ userId: member.id, guildId: message.guild.id });
+                if (userData) await syncUserRoles(userData);
+            }
+
+            log(`⚙️ MULTI-MOD: ${message.author.username} hat ${targetMembers.size} Usern je ${minutes} Min. hinzugefügt.`);
+            return message.reply(`✅ **Erfolg:** Ich habe **${targetMembers.size} Usern** jeweils **${minutes} Minuten** gutgeschrieben! 🎰`);
+        } catch (err) {
+            console.error(err);
+            message.reply("❌ Fehler beim Aktualisieren der User.");
+        }
+        return;
+    }
+
     if (message.content === '!sync') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("Admin only.");
         const allUsers = await StreamUser.find({ guildId: message.guild.id });
@@ -936,4 +972,5 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
