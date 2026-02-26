@@ -5,7 +5,7 @@ const { Strategy } = require('passport-discord');
 const session = require('express-session');
 const mongoose = require('mongoose');
 const path = require('path');
-const cron = require('node-cron'); // NEU: Cron für den Monats-Reset
+const cron = require('node-cron'); 
 require('dotenv').config();
 
 function log(message) {
@@ -44,6 +44,7 @@ const VERIFY_CHANNEL_ID = '1459882167848145073';
 const VERIFY_MOD_CHANNEL_ID = '1473125691058032830'; 
 const TIME_MOD_CHANNEL_ID = '1021086309860782191';   
 const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; 
+const BAN_ROLE_ID = '1476589330301714482'; // Rolle für Stream-Sperre
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -59,7 +60,7 @@ const streamUserSchema = new mongoose.Schema({
     username: String,
     avatar: String,
     totalMinutes: { type: Number, default: 0 },
-    monthlyMinutes: { type: Number, default: 0 }, // NEU: Feld für den aktuellen Monat
+    monthlyMinutes: { type: Number, default: 0 }, 
     lastStreamStart: Date,
     isStreaming: { type: Boolean, default: false },
     lastNotifiedRank: { type: String, default: "Casino Gast" }
@@ -89,7 +90,6 @@ const client = new Client({
 });
 
 // --- HELPER FUNKTIONEN ---
-// NEU: Nimmt jetzt einen sortKey ('effectiveTotal' oder 'effectiveMonthly')
 function getSortedUsers(users, sortKey = 'effectiveTotal') {
     const now = new Date();
     return users.map(user => {
@@ -204,15 +204,13 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         
         const users = await StreamUser.find({ guildId });
         
-        // NEU: Erstelle beide Listen für All-Time und Monatlich
         const sortedAllTime = getSortedUsers(users, 'effectiveTotal');
         const enrichedAllTime = await enrichUserData(guild, sortedAllTime);
 
-        // Bei monatlich filtern wir User raus, die gar keine Monatszeit haben (außer sie sind gerade live)
         const sortedMonthly = getSortedUsers(users, 'effectiveMonthly').filter(u => u.effectiveMonthly > 0 || u.isStreaming);
         const enrichedMonthly = await enrichUserData(guild, sortedMonthly);
 
-        res.render('leaderboard_public', { // HIER GEÄNDERT!
+        res.render('leaderboard_public', { 
             guild, 
             allTimeLeaderboard: enrichedAllTime, 
             monthlyLeaderboard: enrichedMonthly, 
@@ -309,7 +307,7 @@ app.get('/profile/:guildId/:userId', async (req, res) => {
                 avatar = member.displayAvatarURL({ size: 512, extension: 'png' });
             }
         } catch (e) {
-            // Profil bleibt bei DB-Daten
+            // Fallback
         }
 
         res.render('profile', { 
@@ -333,7 +331,7 @@ app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (userData && !isNaN(adjustment)) {
         log(`⚙️ DASHBOARD: Zeit für ${userData.username} um ${adjustment} Min. angepasst.`); 
         userData.totalMinutes = Math.max(0, userData.totalMinutes + adjustment);
-        userData.monthlyMinutes = Math.max(0, userData.monthlyMinutes + adjustment); // NEU
+        userData.monthlyMinutes = Math.max(0, userData.monthlyMinutes + adjustment); 
         await userData.save();
         await syncUserRoles(userData);
     }
@@ -397,79 +395,49 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
+    // Command-String trennen, damit exakte Befehle abgerufen werden können
     const args = message.content.split(' ');
     const command = args[0].toLowerCase();
 
-    // 1. VOICE KICK (Bestehend)
+    // 1. VOICE KICK (!kick @User Grund)
     if (command === '!kick') {
-        // ... (Dein Kick-Code bleibt gleich)
+        if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
+            return message.reply("⛔ Du hast keine Berechtigung, um Leute zu kicken.");
+        }
+        
+        const targetUser = message.mentions.members.first();
+        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!kick @User`");
+
+        let customMessage = args.slice(2).join(' ');
+        const standardMessage = `🚨 **ACHTUNG:** Du wurdest aus dem Voice-Channel entfernt.\n\n**Grund:** Streamen eines nicht verifizierten / unzulässigen Casino-Anbieters.\nBitte halte dich an die Regeln: Nur Orangebonus-Partner oder per \`!verify "ANBIETER"\` freigeschaltete Seiten.\n\nBeim nächsten Verstoß drohen weitere Sanktionen.`;
+        const finalMessage = customMessage ? `🚨 **MODERATION HINWEIS:**\n\n${customMessage}` : standardMessage;
+
+        if (!targetUser.voice.channel) return message.reply("⚠️ Der User befindet sich aktuell in keinem Voice-Channel.");
+
+        try {
+            await targetUser.send(finalMessage).catch(() => {
+                message.channel.send(`⚠️ Konnte dem User keine DM senden (DMs geschlossen), aber er wird gekickt.`);
+            });
+            await targetUser.voice.setChannel(null);
+
+            const embed = new EmbedBuilder()
+                .setTitle('🔇 Voice Kick Erfolgreich')
+                .setDescription(`**User:** ${targetUser}\n**Mod:** ${message.author}\n**Grund:** ${customMessage || "Unzulässiger Anbieter (Standard)"}`)
+                .setColor('#e74c3c')
+                .setTimestamp();
+            message.reply({ embeds: [embed] });
+            log(`🛡️ KICK: ${message.author.username} hat ${targetUser.user.username} aus dem Voice gekickt.`);
+        } catch (err) {
+            console.error(err);
+            message.reply("❌ Fehler beim Kicken.");
+        }
+        return;
     }
 
-    // 2. WARNINGS PRÜFEN (Zuerst prüfen, damit !warn nicht dazwischenfunkt)
+    // 2. WARNINGS PRÜFEN (!warnings @User)
     if (command === '!warnings') {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
-        const targetUser = message.mentions.members.first() || message.member;
-        const warnings = await Warning.find({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
-
-        if (warnings.length === 0) {
-            return message.reply(`✅ ${targetUser.user.username} hat eine weiße Weste (0 Verwarnungen).`);
-        }
-
-        const embed = new EmbedBuilder()
-            .setTitle(`Verwarnungen für ${targetUser.user.username}`)
-            .setColor('Orange')
-            .setFooter({ text: `Gesamt: ${warnings.length}` });
-
-        const lastWarnings = warnings.slice(0, 10);
-        let desc = "";
-        lastWarnings.forEach((w, index) => {
-            const date = w.timestamp.toLocaleDateString('de-DE');
-            desc += `**${index + 1}.** ${date} - Grund: *${w.reason}* (Mod ID: ${w.moderatorId})\n`;
-        });
-
-        embed.setDescription(desc);
-        return message.reply({ embeds: [embed] });
-    }
-
-    // 3. WARN (Nur auslösen, wenn es exakt !warn ist)
-    if (command === '!warn') {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-            return message.reply("⛔ Du hast keine Berechtigung zu verwarnen.");
-        }
-
-        const targetUser = message.mentions.members.first();
-        if (!targetUser) {
-            return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!warn @User Grund`");
-        }
-
-        let reason = args.slice(2).join(' ') || "Verstoß gegen die Serverregeln";
-
-        try {
-            await Warning.create({
-                userId: targetUser.id,
-                guildId: message.guild.id,
-                moderatorId: message.author.id,
-                reason: reason
-            });
-
-            await targetUser.send(`⚠️ **VERWARNUNG**\nDu wurdest auf **${message.guild.name}** verwarnt.\n**Grund:** ${reason}`).catch(() => {});
-
-            const embed = new EmbedBuilder()
-                .setTitle('⚠️ User Verwarnt')
-                .setDescription(`**User:** ${targetUser}\n**Mod:** ${message.author}\n**Grund:** ${reason}`)
-                .setColor('Orange')
-                .setTimestamp();
-
-            return message.reply({ embeds: [embed] });
-        } catch (err) {
-            console.error(err);
-            return message.reply("❌ Fehler beim Speichern der Verwarnung.");
-        }
-    }
-
-    if (message.content.startsWith('!warnings')) {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
         const targetUser = message.mentions.members.first() || message.member;
         const warnings = await Warning.find({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
 
@@ -487,11 +455,43 @@ client.on('messageCreate', async (message) => {
             desc += `**${index + 1}.** ${date} - Grund: *${w.reason}* (Mod ID: ${w.moderatorId})\n`;
         });
         embed.setDescription(desc);
-        message.reply({ embeds: [embed] });
+        return message.reply({ embeds: [embed] });
+    }
+
+    // 3. WARNUNG GEBEN (!warn @User Grund)
+    if (command === '!warn') {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return message.reply("⛔ Du hast keine Berechtigung zu verwarnen.");
+        
+        const targetUser = message.mentions.members.first();
+        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!warn @User Unzulässiger Stream`");
+
+        let reason = args.slice(2).join(' ') || "Verstoß gegen die Serverregeln";
+
+        try {
+            await Warning.create({
+                userId: targetUser.id,
+                guildId: message.guild.id,
+                moderatorId: message.author.id,
+                reason: reason
+            });
+            await targetUser.send(`⚠️ **VERWARNUNG**\nDu wurdest auf **${message.guild.name}** verwarnt.\n**Grund:** ${reason}`).catch(() => {});
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚠️ User Verwarnt')
+                .setDescription(`**User:** ${targetUser}\n**Mod:** ${message.author}\n**Grund:** ${reason}`)
+                .setColor('Orange')
+                .setTimestamp();
+
+            message.reply({ embeds: [embed] });
+            log(`🛡️ WARN: ${targetUser.user.username} verwarnt von ${message.author.username}. Grund: ${reason}`);
+        } catch (err) {
+            console.error(err);
+            message.reply("❌ Fehler beim Speichern der Verwarnung.");
+        }
         return;
     }
 
-    if (message.content.startsWith('!delwarn')) {
+    if (command === '!delwarn') {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
         const targetUser = message.mentions.members.first();
         if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!delwarn @User`");
@@ -504,7 +504,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Die letzte Verwarnung von **${targetUser.user.username}** wurde entfernt.`);
     }
 
-    if (message.content.startsWith('!clearwarnings')) {
+    if (command === '!clearwarnings') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("⛔ Nur Administratoren können alle Verwarnungen löschen.");
         const targetUser = message.mentions.members.first();
         if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!clearwarnings @User`");
@@ -516,14 +516,47 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Alle **${result.deletedCount}** Verwarnungen von **${targetUser.user.username}** wurden unwiderruflich gelöscht.`);
     }
 
-    if (['!addtime', '!removetime', '!resettime'].some(cmd => message.content.startsWith(cmd))) {
+    // 4. STREAM PREVIEW CHECK (!check @User)
+    if (command === '!check') {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
+
+        const targetUser = message.mentions.members.first();
+        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User, dessen Stream du prüfen willst.");
+
+        if (!targetUser.voice.channel) {
+            return message.reply("⚠️ Dieser User ist in keinem Voice-Channel.");
+        }
+
+        const guildId = message.guild.id;
+        const channelId = targetUser.voice.channel.id;
+        const userId = targetUser.id;
+        
+        const previewUrl = `https://discordapp.com/api/v6/streams/guild:${guildId}:${channelId}:${userId}/preview?v=${Date.now()}`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`📸 Stream-Check: ${targetUser.user.username}`)
+            .setDescription(`**Channel:** ${targetUser.voice.channel.name}\n\n*Hinweis: Falls kein Bild erscheint, blockiert Discord den Zugriff für Bots oder der Stream wurde gerade erst gestartet.*`)
+            .setImage(previewUrl) 
+            .setColor(targetUser.voice.streaming ? '#2ecc71' : '#e74c3c')
+            .setFooter({ text: `Abgefragt von ${message.author.username}` })
+            .setTimestamp();
+
+        const modChannel = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
+        
+        if (modChannel) {
+            await modChannel.send({ embeds: [embed] });
+            return message.reply(`✅ Check gesendet an <#${VERIFY_MOD_CHANNEL_ID}>`);
+        } else {
+            return message.reply({ embeds: [embed] });
+        }
+    }
+
+    // 5. ZEIT ANPASSEN (!addtime, !removetime, !resettime)
+    if (['!addtime', '!removetime', '!resettime'].includes(command)) {
         if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return message.reply("⛔ Du hast keine Berechtigung für diesen Command.");
 
-        const args = message.content.split(' ');
-        const command = args[0].toLowerCase();
         const targetUser = message.mentions.members.first();
-        
         if (!targetUser) return message.reply(`⚠️ Bitte markiere einen User.`);
 
         let userData = await StreamUser.findOne({ userId: targetUser.id, guildId: message.guild.id });
@@ -542,7 +575,7 @@ client.on('messageCreate', async (message) => {
             if (isNaN(minutes) || minutes <= 0) return message.reply("⚠️ Bitte gib eine gültige Minutenzahl an.");
             
             userData.totalMinutes += minutes;
-            userData.monthlyMinutes += minutes; // NEU
+            userData.monthlyMinutes += minutes;
             await userData.save();
             await syncUserRoles(userData); 
             
@@ -555,7 +588,7 @@ client.on('messageCreate', async (message) => {
             if (isNaN(minutes) || minutes <= 0) return message.reply("⚠️ Bitte gib eine gültige Minutenzahl an.");
             
             userData.totalMinutes = Math.max(0, userData.totalMinutes - minutes);
-            userData.monthlyMinutes = Math.max(0, userData.monthlyMinutes - minutes); // NEU
+            userData.monthlyMinutes = Math.max(0, userData.monthlyMinutes - minutes); 
             await userData.save();
             await syncUserRoles(userData); 
             
@@ -565,7 +598,7 @@ client.on('messageCreate', async (message) => {
 
         if (command === '!resettime') {
             userData.totalMinutes = 0;
-            userData.monthlyMinutes = 0; // NEU
+            userData.monthlyMinutes = 0; 
             await userData.save();
             await syncUserRoles(userData); 
             
@@ -574,28 +607,26 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    if (message.content.startsWith('!addtimeall')) {
+    // 6. MEHREREN USERN GLEICHZEITIG ZEIT GEBEN (!addtimeall)
+    if (command === '!addtimeall') {
         if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
-        const args = message.content.split(' ');
         const targetMembers = message.mentions.members;
         const minutes = parseInt(args[args.length - 1]);
 
         if (targetMembers.size === 0 || isNaN(minutes) || minutes <= 0) {
-            return message.reply("⚠️ **Fehler:** Bitte markiere die User und nenne am Ende die Minuten.\nBeispiel: `!addtimeall @User1 @User2 60` (Zahl muss ganz am Ende stehen).");
+            return message.reply("⚠️ **Fehler:** Bitte markiere die User und nenne am Ende die Minuten.\nBeispiel: `!addtimeall @User1 @User2 60`");
         }
 
         try {
             const userIds = targetMembers.map(m => m.id);
             
-            // MongoDB-Update für alle User gleichzeitig
             await StreamUser.updateMany(
                 { userId: { $in: userIds }, guildId: message.guild.id },
                 { $inc: { totalMinutes: minutes, monthlyMinutes: minutes } }
             );
 
-            // Rollen-Sync für alle
             for (const member of targetMembers.values()) {
                 const userData = await StreamUser.findOne({ userId: member.id, guildId: message.guild.id });
                 if (userData) await syncUserRoles(userData);
@@ -605,22 +636,20 @@ client.on('messageCreate', async (message) => {
             return message.reply(`✅ **Erfolg:** Ich habe **${targetMembers.size} Usern** jeweils **${minutes} Minuten** gutgeschrieben! 🎰`);
         } catch (err) {
             console.error(err);
-            message.reply("❌ Fehler beim Aktualisieren der User.");
+            return message.reply("❌ Fehler beim Aktualisieren der User.");
         }
-        return;
     }
 
-    if (message.content === '!sync') {
+    if (command === '!sync') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply("Admin only.");
         const allUsers = await StreamUser.find({ guildId: message.guild.id });
         for (const u of allUsers) await syncUserRoles(u);
         return message.reply(`✅ Sync abgeschlossen.`);
     }
 
-    if (message.channel.id === VERIFY_CHANNEL_ID && message.content.startsWith('!verify')) {
+    if (message.channel.id === VERIFY_CHANNEL_ID && command === '!verify') {
         await message.delete().catch(() => {}); 
 
-        const args = message.content.split(' ');
         if (args.length < 2) {
             const msg = await message.channel.send(`⚠️ ${message.author}, bitte gib einen Casinoanbieter an. Beispiel: \`!verify Stake\``);
             setTimeout(() => { msg.delete().catch(() => {}); }, 5000);
@@ -656,7 +685,7 @@ client.on('messageCreate', async (message) => {
         return; 
     }
 
-    if (message.content.startsWith('!rank')) {
+    if (command === '!rank') {
         if (message.channel.id !== VERIFY_CHANNEL_ID) return;
         
         const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
@@ -748,7 +777,7 @@ async function handleStreamStop(userId, guildId, isAutoStop = false) {
         log(`🔴 STOPP: ${userData.username} hat den Stream beendet. Dauer: ${minutes} Min.`);
         
         userData.totalMinutes += Math.max(0, minutes);
-        userData.monthlyMinutes += Math.max(0, minutes); // NEU: Auf Monat addieren
+        userData.monthlyMinutes += Math.max(0, minutes); 
         userData.isStreaming = false;
         userData.lastStreamStart = null;
         await userData.save();
@@ -767,7 +796,6 @@ async function handleStreamStop(userId, guildId, isAutoStop = false) {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guildId = newState.guild.id;
-    const BAN_ROLE_ID = '1476589330301714482'; // Rolle für Stream-Sperre
 
     if (oldState.channelId === newState.channelId && oldState.streaming === newState.streaming) {
         return;
@@ -777,7 +805,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const channelsToCheck = [oldState.channel, newState.channel].filter(Boolean);
 
     for (const channel of channelsToCheck) {
-        // Prüfen, ob dieser Channel für das Tracking freigegeben ist
         const isAllowedChannel = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
         const humansInChannel = channel.members.filter(m => !m.user.bot);
         const hasViewers = humansInChannel.size >= 2;
@@ -785,19 +812,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         for (const [memberId, member] of channel.members) {
             if (member.user.bot) continue;
 
-            // --- 1. CHECK AUF STREAM-SPERRE ---
-            // Wenn der User die Sperr-Rolle hat UND im Tracking-Channel streamt -> KICK
+            // --- CHECK AUF STREAM-SPERRE ---
             if (member.roles.cache.has(BAN_ROLE_ID) && isAllowedChannel && member.voice.streaming) {
                 try {
                     log(`🚫 SPERRE: ${member.user.username} wurde aus dem Voice gekickt (Stream-Sperre aktiv).`);
                     
-                    // User sofort aus dem Voice werfen
                     await member.voice.setChannel(null);
-                    
-                    // Information an den User senden
                     await member.send(`⚠️ **Stream-Sperre:** Du hast aktuell eine Sperre für Streams in den offiziellen Casino-Channels. Dein Stream wurde automatisch beendet.`).catch(() => {});
                     
-                    // Log in den Moderations-Channel senden
                     const logChannel = client.channels.cache.get(STREAM_LOG_CHANNEL_ID);
                     if (logChannel) {
                         const banEmbed = new EmbedBuilder()
@@ -807,14 +829,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                             .setTimestamp();
                         logChannel.send({ embeds: [banEmbed] }).catch(() => {});
                     }
-                    
-                    continue; // Springe zum nächsten Member, dieser hier wurde entfernt
+                    continue; 
                 } catch (err) {
                     log(`❌ Fehler beim Kick von ${member.user.username}: ${err.message}`);
                 }
             }
 
-            // --- 2. NORMALES TRACKING ---
+            // --- NORMALES TRACKING ---
             const isStreamingNow = member.voice.streaming && isAllowedChannel && hasViewers;
             const userData = await StreamUser.findOne({ userId: memberId, guildId });
 
@@ -957,7 +978,6 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --- AUTOMATISCHER MONATS-RESET (CRON-JOB) ---
-// Läuft am 1. jedes Monats um 00:00 Uhr
 cron.schedule('0 0 1 * *', async () => {
     try {
         log('📅 Neuer Monat beginnt! Setze Monats-Zeiten zurück...');
@@ -970,7 +990,6 @@ cron.schedule('0 0 1 * *', async () => {
 
 client.once('ready', async () => {
     log(`✅ Discord Bot online als ${client.user.tag}`);
-    // Start-Scan
     setTimeout(async () => {
         try {
             const resetResult = await StreamUser.updateMany({}, { isStreaming: false, lastStreamStart: null });
@@ -1010,7 +1029,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
-
-
-
