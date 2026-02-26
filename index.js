@@ -123,6 +123,7 @@ async function syncUserRoles(userData, now = new Date()) {
             if (currentDiff > 0) effectiveMinutes += currentDiff;
         }
 
+        // Checkt, ob im Web-Dashboard überhaupt Rollen konfiguriert sind
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
         if (!config || !config.rewards || config.rewards.length === 0) return false;
 
@@ -139,15 +140,25 @@ async function syncUserRoles(userData, now = new Date()) {
         const topReward = earnedRewards[0];
 
         if (topReward) {
+            // User hat genug Zeit für mindestens eine Rolle
             if (!member.roles.cache.has(topReward.roleId)) {
-                await member.roles.add(topReward.roleId).catch(() => {});
+                await member.roles.add(topReward.roleId).catch(e => log(`⚠️ Rechte-Fehler (+): ${e.message}`));
                 log(`🛡️ ROLLEN-UPDATE: + "${topReward.roleName}" für ${userData.username} hinzugefügt.`);
             }
 
+            // Alle veralteten Rollen entfernen
             for (const reward of config.rewards) {
                 if (reward.roleId !== topReward.roleId && member.roles.cache.has(reward.roleId)) {
-                    await member.roles.remove(reward.roleId).catch(() => {});
+                    await member.roles.remove(reward.roleId).catch(e => log(`⚠️ Rechte-Fehler (-): ${e.message}`));
                     log(`🛡️ ROLLEN-UPDATE: - "${reward.roleName}" von ${userData.username} entfernt.`);
+                }
+            }
+        } else {
+            // NEU: User ist unter das Minimum der kleinsten Rolle gefallen (z.B. Zeit abgezogen oder Reset)
+            for (const reward of config.rewards) {
+                if (member.roles.cache.has(reward.roleId)) {
+                    await member.roles.remove(reward.roleId).catch(e => log(`⚠️ Rechte-Fehler (Reset): ${e.message}`));
+                    log(`🛡️ ROLLEN-UPDATE: - "${reward.roleName}" von ${userData.username} entfernt (Zeit reicht nicht mehr).`);
                 }
             }
         }
@@ -961,3 +972,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
