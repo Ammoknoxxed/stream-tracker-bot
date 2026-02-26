@@ -501,15 +501,32 @@ function renderLeaderboard(userList, timeKey, tableId) { %>
         <% renderLeaderboard(allTimeLeaderboard, 'effectiveTotal', 'table-alltime'); %>
     </div>
 
-    <div id="view-monthly" style="display: none;">
-        <% if(typeof monthlyLeaderboard !== 'undefined' && monthlyLeaderboard.length > 0) { %>
-            <% renderLeaderboard(monthlyLeaderboard, 'effectiveMonthly', 'table-monthly'); %>
-        <% } else { %>
-            <div class="glass-card p-5 text-center mt-4">
-                <i class="fas fa-calendar-times text-muted mb-3" style="font-size: 3rem;"></i>
-                <h4 class="text-white">Diesen Monat hat noch niemand gestreamt!</h4>
-                <p class="text-muted">Die Statistik wird am 1. jedes Monats zurückgesetzt.</p>
+<div id="view-monthly" style="display: none;">
+        <% 
+            // Prüft, ob wir schon den 1. März 2026 (oder später) haben (Monat 2 = März, da Jan=0)
+            const now = new Date();
+            const isMarchOrLater = now.getFullYear() > 2026 || (now.getFullYear() === 2026 && now.getMonth() >= 2);
+        %>
+        
+        <% if (!isMarchOrLater) { %>
+            <div class="glass-card p-5 text-center mt-4" style="border-color: var(--accent) !important; box-shadow: 0 0 30px rgba(251, 191, 36, 0.2);">
+                <i class="fas fa-rocket mb-3 fa-beat" style="font-size: 3.5rem; color: var(--accent);"></i>
+                <h3 class="text-white fw-bold" style="letter-spacing: 1px;">Das Monats-Leaderboard startet bald!</h3>
+                <p class="text-white-50 mt-3" style="font-size: 1.1rem;">
+                    Der offizielle Startschuss für die monatliche Punkte-Jagd fällt am <strong class="text-accent">1. März</strong>.<br>
+                    Mach dich bereit und wärm die Walzen schon mal auf! 🎰
+                </p>
             </div>
+        <% } else { %>
+            <% if(typeof monthlyLeaderboard !== 'undefined' && monthlyLeaderboard.length > 0) { %>
+                <% renderLeaderboard(monthlyLeaderboard, 'effectiveMonthly', 'table-monthly'); %>
+            <% } else { %>
+                <div class="glass-card p-5 text-center mt-4">
+                    <i class="fas fa-calendar-times text-muted mb-3" style="font-size: 3rem;"></i>
+                    <h4 class="text-white">Diesen Monat hat noch niemand gestreamt!</h4>
+                    <p class="text-muted">Die Statistik wird am 1. jedes Monats zurückgesetzt.</p>
+                </div>
+            <% } %>
         <% } %>
     </div>
 
