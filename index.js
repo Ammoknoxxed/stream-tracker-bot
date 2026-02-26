@@ -42,6 +42,7 @@ const ranks = [
 const VERIFY_CHANNEL_ID = '1459882167848145073';     // User tippen hier !verify und !rank
 const VERIFY_MOD_CHANNEL_ID = '1473125691058032830'; // Hier landen die Verify-Anfragen für die Moderatoren
 const TIME_MOD_CHANNEL_ID = '1021086309860782191';   // Hier können Moderatoren Zeiten per Command anpassen
+const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; // Hier postet der Bot die Stream-Logs
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -63,7 +64,6 @@ const streamUserSchema = new mongoose.Schema({
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
-// --- NEU: WARNING MODEL ---
 const warningSchema = new mongoose.Schema({
     userId: String,
     guildId: String,
@@ -72,7 +72,6 @@ const warningSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 const Warning = mongoose.model('Warning', warningSchema);
-
 
 // --- 2. BOT SETUP ---
 const client = new Client({
@@ -337,11 +336,10 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    // --- NEU: MODERATION SYSTEM COMMANDS ---
+    // --- MODERATION SYSTEM COMMANDS ---
 
-    // 1. VOICE KICK (!kickvoice @User [Grund/Nachricht])
+    // 1. VOICE KICK (!kick @User [Grund/Nachricht])
     if (message.content.startsWith('!kick')) {
-        // Berechtigungs-Check (Moderatoren brauchen "Mitglieder verschieben" Recht)
         if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
             return message.reply("⛔ Du hast keine Berechtigung, um Leute zu kicken.");
         }
@@ -353,30 +351,21 @@ client.on('messageCreate', async (message) => {
             return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!kick @User`");
         }
 
-        // Grund ermitteln (Alles nach dem User-Mention)
-        // args[0] = !kickvoice, args[1] = @User, args[2...] = Text
         let customMessage = args.slice(2).join(' ');
-        
-        // Standard-Nachricht, falls keine eigene angegeben wurde
         const standardMessage = `🚨 **ACHTUNG:** Du wurdest aus dem Voice-Channel entfernt.\n\n**Grund:** Streamen eines nicht verifizierten / unzulässigen Casino-Anbieters.\nBitte halte dich an die Regeln: Nur Orangebonus-Partner oder per \`!verify "ANBIETER"\` freigeschaltete Seiten.\n\nBeim nächsten Verstoß drohen weitere Sanktionen.`;
-
         const finalMessage = customMessage ? `🚨 **MODERATION HINWEIS:**\n\n${customMessage}` : standardMessage;
 
-        // Prüfen, ob User im Voice ist
         if (!targetUser.voice.channel) {
             return message.reply("⚠️ Der User befindet sich aktuell in keinem Voice-Channel.");
         }
 
         try {
-            // 1. DM Senden
             await targetUser.send(finalMessage).catch(() => {
                 message.channel.send(`⚠️ Konnte dem User keine DM senden (DMs geschlossen), aber er wird gekickt.`);
             });
 
-            // 2. Kicken (Disconnecten durch Setzen des Channels auf null)
             await targetUser.voice.setChannel(null);
 
-            // 3. Bestätigung im Chat
             const embed = new EmbedBuilder()
                 .setTitle('🔇 Voice Kick Erfolgreich')
                 .setDescription(`**User:** ${targetUser}\n**Mod:** ${message.author}\n**Grund:** ${customMessage || "Unzulässiger Anbieter (Standard)"}`)
@@ -395,7 +384,7 @@ client.on('messageCreate', async (message) => {
 
     // 2. WARN (!warn @User [Grund])
     if (message.content.startsWith('!warn')) {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) { // Oder Administrator
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) { 
             return message.reply("⛔ Du hast keine Berechtigung zu verwarnen.");
         }
 
@@ -409,7 +398,6 @@ client.on('messageCreate', async (message) => {
         let reason = args.slice(2).join(' ') || "Verstoß gegen die Serverregeln";
 
         try {
-            // In DB speichern
             await Warning.create({
                 userId: targetUser.id,
                 guildId: message.guild.id,
@@ -417,7 +405,6 @@ client.on('messageCreate', async (message) => {
                 reason: reason
             });
 
-            // DM Senden
             await targetUser.send(`⚠️ **VERWARNUNG**\nDu wurdest auf **${message.guild.name}** verwarnt.\n**Grund:** ${reason}`).catch(() => {});
 
             const embed = new EmbedBuilder()
@@ -440,7 +427,7 @@ client.on('messageCreate', async (message) => {
     if (message.content.startsWith('!warnings')) {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
-        const targetUser = message.mentions.members.first() || message.member; // Ohne Mention = Eigene Warnings
+        const targetUser = message.mentions.members.first() || message.member;
 
         const warnings = await Warning.find({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
 
@@ -453,7 +440,6 @@ client.on('messageCreate', async (message) => {
             .setColor('Orange')
             .setFooter({ text: `Gesamt: ${warnings.length}` });
 
-        // Nur die letzten 10 anzeigen, sonst wird die Message zu lang
         const lastWarnings = warnings.slice(0, 10);
         let desc = "";
         
@@ -474,7 +460,6 @@ client.on('messageCreate', async (message) => {
         const targetUser = message.mentions.members.first();
         if (!targetUser) return message.reply("⚠️ Bitte markiere einen User. Beispiel: `!delwarn @User`");
 
-        // Wir suchen die allerletzte Warnung (sortiert nach Zeit absteigend)
         const lastWarning = await Warning.findOne({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
 
         if (!lastWarning) {
@@ -506,12 +491,10 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Alle **${result.deletedCount}** Verwarnungen von **${targetUser.user.username}** wurden unwiderruflich gelöscht.`);
     }
 
-    // --- 6. NEU: ZEITEN PER DISCORD ANPASSEN ---
+    // 6. ZEITEN PER DISCORD ANPASSEN
     if (['!addtime', '!removetime', '!resettime'].some(cmd => message.content.startsWith(cmd))) {
-        // 1. Check: Ist es der ausgewiesene Mod-Channel für das Zeiten-Management?
         if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
 
-        // 2. Check: Hat der User Mod-Rechte? (ManageMessages reicht als Check)
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
             return message.reply("⛔ Du hast keine Berechtigung für diesen Command.");
         }
@@ -524,7 +507,6 @@ client.on('messageCreate', async (message) => {
             return message.reply(`⚠️ Bitte markiere einen User. Beispiel: \`${command} @User ${command === '!resettime' ? '' : '60'}\``);
         }
 
-        // Finde den User in der DB (oder erstelle ihn, falls er noch nie getrackt wurde)
         let userData = await StreamUser.findOne({ userId: targetUser.id, guildId: message.guild.id });
         if (!userData) {
             userData = new StreamUser({ 
@@ -541,7 +523,7 @@ client.on('messageCreate', async (message) => {
             
             userData.totalMinutes += minutes;
             await userData.save();
-            await syncUserRoles(userData); // Direkt Rollen updaten
+            await syncUserRoles(userData); 
             
             log(`⚙️ MOD-CMD: ${message.author.username} hat ${targetUser.user.username} ${minutes} Min. hinzugefügt.`);
             return message.reply(`✅ **Erfolg:** Dem User ${targetUser} wurden **${minutes} Minuten** hinzugefügt. (Neue Gesamtzeit: \`${Math.floor(userData.totalMinutes / 60)}h ${userData.totalMinutes % 60}m\`)`);
@@ -551,10 +533,9 @@ client.on('messageCreate', async (message) => {
             const minutes = parseInt(args[2]);
             if (isNaN(minutes) || minutes <= 0) return message.reply("⚠️ Bitte gib eine gültige Minutenzahl an. Beispiel: `!removetime @User 30`");
             
-            // Zeit abziehen, aber nicht unter 0 fallen lassen
             userData.totalMinutes = Math.max(0, userData.totalMinutes - minutes);
             await userData.save();
-            await syncUserRoles(userData); // Rollen anpassen (auch bei Downgrades!)
+            await syncUserRoles(userData); 
             
             log(`⚙️ MOD-CMD: ${message.author.username} hat ${targetUser.user.username} ${minutes} Min. abgezogen.`);
             return message.reply(`📉 **Erfolg:** Dem User ${targetUser} wurden **${minutes} Minuten** abgezogen. (Neue Gesamtzeit: \`${Math.floor(userData.totalMinutes / 60)}h ${userData.totalMinutes % 60}m\`)`);
@@ -563,14 +544,12 @@ client.on('messageCreate', async (message) => {
         if (command === '!resettime') {
             userData.totalMinutes = 0;
             await userData.save();
-            await syncUserRoles(userData); // Rollt den User komplett auf Level 0 zurück
+            await syncUserRoles(userData); 
             
             log(`🗑️ MOD-CMD: ${message.author.username} hat die Zeit von ${targetUser.user.username} auf 0 gesetzt.`);
             return message.reply(`🗑️ **Reset:** Die Zeit von ${targetUser} wurde komplett auf **0** gesetzt. Alle erspielten Rollen wurden entfernt.`);
         }
     }
-    // --- MODERATION SYSTEM ENDE ---
-
 
     // --- ADMIN SYNC ---
     if (message.content === '!sync') {
@@ -594,7 +573,6 @@ client.on('messageCreate', async (message) => {
 
         const providerName = args.slice(1).join(" "); 
 
-        // NUTZT JETZT VERIFY_MOD_CHANNEL_ID
         const modChannel = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
         if (!modChannel) return log("❌ FEHLER: Mod-Channel ID für Verify ist falsch konfiguriert!");
 
@@ -624,7 +602,6 @@ client.on('messageCreate', async (message) => {
         
         return; 
     }
-    // --- VERIFY SYSTEM ENDE ---
 
     // --- RANK COMMAND ---
     if (message.content.startsWith('!rank')) {
@@ -700,17 +677,40 @@ async function handleStreamStart(userId, guildId, username, avatarURL) {
         { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL },
         { upsert: true }
     );
+
+    // DISCORD LOG
+    const logChannel = client.channels.cache.get(STREAM_LOG_CHANNEL_ID);
+    if (logChannel) {
+        const embed = new EmbedBuilder()
+            .setTitle('🟢 Stream Gestartet')
+            .setDescription(`**User:** <@${userId}> (${username}) hat einen Stream begonnen.`)
+            .setColor('#2ecc71') 
+            .setTimestamp();
+        logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
 }
 
-async function handleStreamStop(userId, guildId) {
+async function handleStreamStop(userId, guildId, isAutoStop = false) {
     const userData = await StreamUser.findOne({ userId, guildId });
     if (userData?.isStreaming) {
         const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
         log(`🔴 STOPP: ${userData.username} hat den Stream beendet. Dauer: ${minutes} Min.`);
+        
         userData.totalMinutes += Math.max(0, minutes);
         userData.isStreaming = false;
         userData.lastStreamStart = null;
         await userData.save();
+
+        // DISCORD LOG
+        const logChannel = client.channels.cache.get(STREAM_LOG_CHANNEL_ID);
+        if (logChannel) {
+            const embed = new EmbedBuilder()
+                .setTitle(isAutoStop ? '🛡️ Auto-Stopp (Geister-Stream)' : '🔴 Stream Beendet')
+                .setDescription(`**User:** <@${userId}> (${userData.username})\n**Dauer der Session:** ${minutes} Minuten\n**Neue Gesamtzeit:** \`${Math.floor(userData.totalMinutes / 60)}h ${userData.totalMinutes % 60}m\``)
+                .setColor(isAutoStop ? '#f1c40f' : '#e74c3c') 
+                .setTimestamp();
+            logChannel.send({ embeds: [embed] }).catch(() => {});
+        }
     }
 }
 
@@ -757,7 +757,6 @@ setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
     
-    // Status Channel für Level-Ups
     const statusChannelId = VERIFY_CHANNEL_ID; 
 
     log(`🔍 SYSTEM-CHECK: Starte Routine-Scan für ${allUsers.length} Profile.`);
@@ -770,7 +769,7 @@ setInterval(async () => {
                 
                 if (!member || !member.voice.channel || !member.voice.streaming) {
                     log(`🛡️ AUTO-STOPP: Geister-Stream von ${userData.username} beendet.`);
-                    await handleStreamStop(userData.userId, userData.guildId);
+                    await handleStreamStop(userData.userId, userData.guildId, true); // true für Auto-Stop
                     continue; 
                 }
             }
