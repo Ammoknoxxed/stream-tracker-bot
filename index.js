@@ -216,7 +216,7 @@ async function syncUserRoles(userData, now = new Date()) {
 
 // --- EXPRESS / DASHBOARD SETUP ---
 const app = express();
-app.set('trust proxy', 1); // WICHTIG: Damit Railway die Session-Daten und Redirects nicht blockiert
+app.set('trust proxy', 1); // WICHTIG: Damit Railway die Session-Daten nicht blockiert
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
@@ -231,7 +231,17 @@ passport.use(new Strategy({
     proxy: true
 }, (accessToken, refreshToken, profile, done) => done(null, profile)));
 
-app.use(session({ secret: 'stream-tracker-secret', resave: false, saveUninitialized: false }));
+// VERBESSERTE SESSION EINSTELLUNGEN FÜR RAILWAY
+app.use(session({ 
+    secret: 'stream-tracker-secret', 
+    resave: false, 
+    saveUninitialized: true, // Muss true sein für Redirect-Speicherung!
+    cookie: { 
+        secure: 'auto', // Passt sich an HTTP/HTTPS an
+        maxAge: 1000 * 60 * 60 * 24 // 24 Stunden Session
+    } 
+}));
+
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -268,7 +278,8 @@ app.get('/leaderboard/:guildId', async (req, res) => {
 
 // --- LOGIN ROUTEN UPDATE ---
 app.get('/login', (req, res, next) => {
-    let backURL = req.headers.referer || '/';
+    // 1. Wir holen das Ziel aus dem Parameter (?returnTo=...) oder als Notnagel den Referer
+    let backURL = req.query.returnTo || req.headers.referer || '/';
     
     // Vermeide Redirect-Loops, wenn jemand direkt auf /login war
     try {
@@ -277,11 +288,12 @@ app.get('/login', (req, res, next) => {
         }
     } catch (e) {}
 
-    if (backURL === '/login') backURL = '/';
+    if (backURL.includes('/login')) backURL = '/';
 
+    // 2. In die Session speichern
     req.session.returnTo = backURL;
     
-    // Session speichern bevor weitergeleitet wird
+    // 3. Wichtig: Warten bis die DB/Session es geschrieben hat, BEVOR Discord aufgerufen wird
     req.session.save((err) => {
         if (err) console.error("Session Save Error:", err);
         next();
@@ -308,11 +320,12 @@ app.get('/auth/discord/callback',
             log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
         }
         
+        // 4. Zielpfad wieder aus der Session holen
         const redirectTo = req.session.returnTo || '/';
         delete req.session.returnTo; 
         
         req.session.save(() => {
-            // Wenn der User von der Startseite kommt, gehen wir davon aus, dass er ins Admin-Dashboard will
+            // Wenn der User von der nackten Startseite kommt, ins Admin-Dashboard leiten
             if (redirectTo === '/') {
                 res.redirect('/dashboard');
             } else {
