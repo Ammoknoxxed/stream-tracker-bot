@@ -216,6 +216,7 @@ async function syncUserRoles(userData, now = new Date()) {
 
 // --- EXPRESS / DASHBOARD SETUP ---
 const app = express();
+app.set('trust proxy', 1); // WICHTIG: Damit Railway die Session-Daten und Redirects nicht blockiert
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
@@ -257,7 +258,7 @@ app.get('/leaderboard/:guildId', async (req, res) => {
             monthlyLeaderboard: enrichedMonthly, 
             monthName: "Gesamtstatistik", 
             ranks,
-            loggedInUser: req.user // Falls wir mal einen Button dort einbauen
+            loggedInUser: req.user
         });
     } catch (err) { 
         console.error(err);
@@ -265,11 +266,26 @@ app.get('/leaderboard/:guildId', async (req, res) => {
     }
 });
 
-// --- LOGIN ROUTEN ---
+// --- LOGIN ROUTEN UPDATE ---
 app.get('/login', (req, res, next) => {
-    // Merke dir die Ursprungsseite (z.B. /bonushunt) oder setze / als Fallback
-    req.session.returnTo = req.headers.referer || '/';
-    next();
+    let backURL = req.headers.referer || '/';
+    
+    // Vermeide Redirect-Loops, wenn jemand direkt auf /login war
+    try {
+        if (backURL.startsWith('http')) {
+            backURL = new URL(backURL).pathname;
+        }
+    } catch (e) {}
+
+    if (backURL === '/login') backURL = '/';
+
+    req.session.returnTo = backURL;
+    
+    // Session speichern bevor weitergeleitet wird
+    req.session.save((err) => {
+        if (err) console.error("Session Save Error:", err);
+        next();
+    });
 }, passport.authenticate('discord'));
 
 app.get('/logout', (req, res, next) => {
@@ -292,22 +308,22 @@ app.get('/auth/discord/callback',
             log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
         }
         
-        // Zurück zur ursprünglichen Seite leiten
         const redirectTo = req.session.returnTo || '/';
         delete req.session.returnTo; 
         
-        // Wenn er vom Index kam, ausnahmsweise auf Dashboard schicken (für dich als Admin)
-        if (redirectTo === '/') {
-            res.redirect('/dashboard');
-        } else {
-            res.redirect(redirectTo);
-        }
+        req.session.save(() => {
+            // Wenn der User von der Startseite kommt, gehen wir davon aus, dass er ins Admin-Dashboard will
+            if (redirectTo === '/') {
+                res.redirect('/dashboard');
+            } else {
+                res.redirect(redirectTo);
+            }
+        });
     }
 );
 
 // --- BONUS HUNT ROUTEN ---
 app.get('/bonushunt', async (req, res) => {
-    // Rendern mit oder ohne Login (Login-Zwang wird im Frontend via Button geregelt)
     let activeHunt = null;
     if (req.isAuthenticated()) {
         activeHunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
