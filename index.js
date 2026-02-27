@@ -365,7 +365,7 @@ app.post('/bonushunt/start', async (req, res) => {
         newHunt.summaryMsgId = summaryMsg.id;
         await newHunt.save();
 
-        await huntChannel.send(`🚨 <@${req.user.id}> hat gerade einen neuen **Bonus Hunt** mit \`${startBalance.toFixed(2)}€\` gestartet!\n👀 Verfolge das Spektakel live hier: <#${thread.id}>`);
+        await huntChannel.send(`🚨 <@${req.user.id}> hat gerade einen neuen **Bonus Hunt** mit \`${startBalance.toFixed(2)}€\` gestartet!\n👀 Verfolge den Hunt LIVE hier: <#${thread.id}>`);
 
         res.redirect('/bonushunt');
     } catch (err) {
@@ -1253,6 +1253,7 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
 
 
