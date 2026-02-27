@@ -481,7 +481,7 @@ app.post('/bonushunt/finish', async (req, res) => {
                 .setFooter({ text: 'GG! Bis zum nächsten Mal.' })
                 .setTimestamp();
 
-            await thread.send({ content: `Der Hunt ist vorbei! Wie war die Ausbeute, Chat?`, embeds: [finalEmbed] });
+            await thread.send({ content: `Der Hunt ist beendet!`, embeds: [finalEmbed] });
             await thread.setArchived(true);
         }
 
@@ -1210,4 +1210,5 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
