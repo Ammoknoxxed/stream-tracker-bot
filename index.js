@@ -17,7 +17,7 @@ function log(message) {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- 0. KONFIGURATION YEEES ---
+// --- 0. KONFIGURATION YEEEEEES ---
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500" },
@@ -1217,6 +1217,7 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
 
 
