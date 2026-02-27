@@ -529,9 +529,45 @@ app.get('/dashboard/:guildId', async (req, res) => {
 });
 
 app.get('/roadmap', (req, res) => {
-    const projects = []; 
-    const guild = { name: "JUICER BOT" };
-    res.render('roadmap', { projects, guild });
+    // Hier definieren wir die Roadmap-Einträge
+    const projects = [
+        { 
+            title: "Live Bonus Hunt Tracker", 
+            desc: "Interaktives Web-Dashboard zum Eintragen von Slots inkl. Live-Übertragung der Stats in den Discord-Thread.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Automatisches Monats-Leaderboard", 
+            desc: "Fairer Wettkampf! Jeden 1. des Monats werden die Monats-Zeiten automatisch genullt, während die All-Time Stats bleiben.", 
+            status: "Fertig", 
+            progress: 100 
+        },
+        { 
+            title: "Zuschauer-Tippspiel (Guess the Win)", 
+            desc: "Ein neues Feature für den Discord, bei dem die Community tippen kann, wie viel Profit ein Bonus Hunt abwirft.", 
+            status: "Thinktank", 
+            progress: 361 
+        },
+        { 
+            title: "Erweiterte User-Profile", 
+            desc: "Eigene Profil-Seiten mit grafischen Auswertungen, Win/Loss-Ratios und den besten Hits des Monats.", 
+            status: "Geplant", 
+            progress: 50 
+        },
+        { 
+            title: "KI Stream Erkennung", 
+            desc: "The Bot is watching you.", 
+            status: "Geplant", 
+            progress: 15 
+        }
+    ]; 
+
+    // Wir holen uns die ID des Servers, damit der "Zurück zum Leaderboard" Button funktioniert
+    const firstGuild = client.guilds.cache.first();
+    const guildInfo = firstGuild ? { name: firstGuild.name, id: firstGuild.id } : { name: "JUICER BOT", id: "0" };
+
+    res.render('roadmap', { projects, guild: guildInfo });
 });
 
 app.get('/profile/:guildId/:userId', async (req, res) => {
