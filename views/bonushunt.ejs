@@ -125,7 +125,7 @@
 
     <% } else { %>
         <% 
-            // Die Logik für die perfekte Berechnung
+            // Die Logik für die perfekte Berechnungen
             const lastBal = hunt.slots.length > 0 ? hunt.slots[hunt.slots.length - 1].currentBalance : hunt.startBalance;
             const totalInvest = hunt.startBalance - lastBal; // Echtes verbranntes Geld
             const totalWert = hunt.slots.reduce((acc, s) => acc + s.value, 0); // Idealer Wert
