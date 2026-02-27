@@ -45,6 +45,7 @@ const VERIFY_MOD_CHANNEL_ID = '1473125691058032830';
 const TIME_MOD_CHANNEL_ID = '1021086309860782191';   
 const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; 
 const BAN_ROLE_ID = '1476589330301714482'; // Rolle für Stream-Sperre
+const BONUS_HUNT_CHANNEL_ID = '1476889019303591936'; // NEU: Channel für die Hunt-Threads
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -75,6 +76,46 @@ const warningSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 const Warning = mongoose.model('Warning', warningSchema);
+
+// --- 1.5 BONUS HUNT MODELLE ---
+const slotEntrySchema = new mongoose.Schema({
+    name: String,
+    bet: Number,
+    win: { type: Number, default: 0 },
+    isOpened: { type: Boolean, default: false }
+});
+
+const bonusHuntSchema = new mongoose.Schema({
+    userId: String,
+    username: String,
+    threadId: String,       // ID des Discord-Threads
+    summaryMsgId: String,   // ID der Hauptnachricht im Thread
+    startBalance: Number,
+    isActive: { type: Boolean, default: true },
+    slots: [slotEntrySchema],
+    createdAt: { type: Date, default: Date.now }
+});
+const BonusHunt = mongoose.model('BonusHunt', bonusHuntSchema);
+
+// Hilfsfunktion: Baut das Embed für den Discord-Thread
+function buildHuntEmbed(hunt) {
+    const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
+    const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
+    
+    let slotList = hunt.slots.map((s, i) => {
+        let status = s.isOpened ? `✅ Win: **${s.win.toFixed(2)}€** (${(s.win/s.bet).toFixed(2)}x)` : '⏳ Wartet auf Opening...';
+        return `**${i+1}. ${s.name}** | Einsatz: ${s.bet.toFixed(2)}€ | ${status}`;
+    }).join('\n');
+    
+    if (!slotList) slotList = "Noch keine Slots gesammelt.";
+
+    return new EmbedBuilder()
+        .setTitle(`🎰 Live Bonus Hunt von ${hunt.username}`)
+        .setDescription(`**Start-Balance:** ${hunt.startBalance.toFixed(2)}€\n**Gesammelte Slots:** ${hunt.slots.length}\n**Gesamteinsatz:** ${totalBet.toFixed(2)}€\n\n${slotList}`)
+        .setColor('#fbbf24')
+        .setFooter({ text: 'Juicer Bonus Hunt Tracker' })
+        .setTimestamp();
+}
 
 // --- 2. BOT SETUP ---
 const client = new Client({
@@ -215,7 +256,8 @@ app.get('/leaderboard/:guildId', async (req, res) => {
             allTimeLeaderboard: enrichedAllTime, 
             monthlyLeaderboard: enrichedMonthly, 
             monthName: "Gesamtstatistik", 
-            ranks 
+            ranks,
+            loggedInUser: req.user // Falls wir mal einen Button dort einbauen
         });
     } catch (err) { 
         console.error(err);
@@ -223,7 +265,12 @@ app.get('/leaderboard/:guildId', async (req, res) => {
     }
 });
 
-app.get('/login', passport.authenticate('discord'));
+// --- LOGIN ROUTEN ---
+app.get('/login', (req, res, next) => {
+    // Merke dir die Ursprungsseite (z.B. /bonushunt) oder setze / als Fallback
+    req.session.returnTo = req.headers.referer || '/';
+    next();
+}, passport.authenticate('discord'));
 
 app.get('/logout', (req, res, next) => {
     req.logout(function(err) {
@@ -244,10 +291,148 @@ app.get('/auth/discord/callback',
         if (req.user) {
             log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
         }
-        res.redirect('/dashboard');
+        
+        // Zurück zur ursprünglichen Seite leiten
+        const redirectTo = req.session.returnTo || '/';
+        delete req.session.returnTo; 
+        
+        // Wenn er vom Index kam, ausnahmsweise auf Dashboard schicken (für dich als Admin)
+        if (redirectTo === '/') {
+            res.redirect('/dashboard');
+        } else {
+            res.redirect(redirectTo);
+        }
     }
 );
 
+// --- BONUS HUNT ROUTEN ---
+app.get('/bonushunt', async (req, res) => {
+    // Rendern mit oder ohne Login (Login-Zwang wird im Frontend via Button geregelt)
+    let activeHunt = null;
+    if (req.isAuthenticated()) {
+        activeHunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
+    }
+    res.render('bonushunt', { user: req.user, hunt: activeHunt });
+});
+
+app.post('/bonushunt/start', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/login');
+    const startBalance = parseFloat(req.body.startBalance);
+    
+    try {
+        const huntChannel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
+        if (!huntChannel) return res.status(500).send("Discord Channel nicht gefunden.");
+
+        const thread = await huntChannel.threads.create({
+            name: `🎰 Hunt: ${req.user.username}`,
+            autoArchiveDuration: 1440,
+            reason: 'Neuer Bonus Hunt gestartet'
+        });
+
+        const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance, threadId: thread.id });
+        const summaryMsg = await thread.send({ embeds: [buildHuntEmbed(newHunt)] });
+        
+        newHunt.summaryMsgId = summaryMsg.id;
+        await newHunt.save();
+
+        await huntChannel.send(`🚨 **${req.user.username}** hat gerade einen neuen Bonus Hunt mit **${startBalance.toFixed(2)}€** gestartet! Verfolge es live hier: <#${thread.id}>`);
+
+        res.redirect('/bonushunt');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fehler beim Starten.");
+    }
+});
+
+app.post('/bonushunt/add', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/login');
+    const { slotName, betSize } = req.body;
+
+    try {
+        const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
+        if (!hunt) return res.redirect('/bonushunt');
+
+        hunt.slots.push({ name: slotName, bet: parseFloat(betSize) });
+        await hunt.save();
+
+        const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
+        const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
+        if (thread) {
+            const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
+            if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
+            await thread.send(`➕ **${slotName}** auf **${parseFloat(betSize).toFixed(2)}€** Einsatz gesammelt!`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
+        }
+
+        res.redirect('/bonushunt');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fehler beim Hinzufügen.");
+    }
+});
+
+app.post('/bonushunt/open/:slotId', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/login');
+    const winAmount = parseFloat(req.body.winAmount);
+
+    try {
+        const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
+        if (!hunt) return res.redirect('/bonushunt');
+
+        const slot = hunt.slots.id(req.params.slotId);
+        if (slot) {
+            slot.win = winAmount;
+            slot.isOpened = true;
+            await hunt.save();
+
+            const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
+            const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
+            if (thread) {
+                const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
+                if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
+                await thread.send(`🎉 **${slot.name}** hat **${winAmount.toFixed(2)}€** gezahlt (${(winAmount/slot.bet).toFixed(2)}x)!`);
+            }
+        }
+        res.redirect('/bonushunt');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fehler.");
+    }
+});
+
+app.post('/bonushunt/finish', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/login');
+    try {
+        const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
+        if (!hunt) return res.redirect('/bonushunt');
+
+        hunt.isActive = false;
+        await hunt.save();
+
+        const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
+        const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
+        const profit = totalWin - totalBet;
+
+        const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
+        const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
+        if (thread) {
+            const finalEmbed = new EmbedBuilder()
+                .setTitle(`🏁 Bonus Hunt Beendet!`)
+                .setDescription(`**Ergebnis von ${hunt.username}**\n\n💰 **Gesamteinsatz:** ${totalBet.toFixed(2)}€\n🏆 **Gesamtgewinn:** ${totalWin.toFixed(2)}€\n\n📊 **Profit/Loss:** ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€`)
+                .setColor(profit >= 0 ? '#2ecc71' : '#e74c3c')
+                .setTimestamp();
+
+            await thread.send({ content: `Der Bonus Hunt ist vorbei!`, embeds: [finalEmbed] });
+            await thread.setArchived(true);
+        }
+
+        res.redirect('/bonushunt');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fehler beim Beenden.");
+    }
+});
+
+// --- STANDARD DASHBOARD ROUTEN ---
 app.get('/dashboard', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
@@ -395,7 +580,6 @@ app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    // Command-String trennen, damit exakte Befehle abgerufen werden können
     const args = message.content.split(' ');
     const command = args[0].toLowerCase();
 
