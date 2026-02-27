@@ -6,8 +6,16 @@
     <title><%= userData.displayName %> | Profil</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <% 
+        // Lade die individuelle User-Farbe, ansonsten nutze das Standard-Gold
+        const userColor = userData.profileColor || '#fbbf24'; 
+    %>
+    
     <style>
-        :root { --accent: #fbbf24; }
+        :root { 
+            --accent: <%= userColor %>; 
+        }
         body {
             background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('/images/background.jpg');
             background-attachment: fixed; background-position: center; background-size: cover;
@@ -17,12 +25,17 @@
         .glass-card {
             background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 10, 15, 0.85) 100%);
             backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 25px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5); padding: 40px; max-width: 500px; width: 100%;
+            /* Der Rahmen leuchtet jetzt in der Profilfarbe des Users */
+            border: 1px solid var(--accent); border-radius: 25px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 0, 0, 0.5); 
+            padding: 40px; max-width: 500px; width: 100%;
             text-align: center; position: relative; overflow: hidden;
+            transition: all 0.3s ease;
         }
         .avatar-container { position: relative; width: 150px; height: 150px; margin: 0 auto 20px; }
-        .profile-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 4px solid var(--accent); box-shadow: 0 0 20px rgba(251, 191, 36, 0.4); }
+        
+        /* Avatar Rahmen auch in der User-Farbe */
+        .profile-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 4px solid var(--accent); box-shadow: 0 0 20px var(--accent); }
         .glow-streaming { border-color: #ff0055 !important; box-shadow: 0 0 25px rgba(255, 0, 85, 0.6); animation: pulse-border 2s infinite; }
         .live-badge { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); background: #ff0055; color: white; padding: 2px 10px; border-radius: 15px; font-size: 0.75rem; font-weight: bold; border: 2px solid #0a0a0f; }
         .rank-icon { width: 60px; margin-bottom: 10px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
@@ -31,6 +44,72 @@
         .btn-back { display: inline-block; margin-top: 30px; color: rgba(255,255,255,0.6); text-decoration: none; font-size: 0.9rem; transition: 0.3s; }
         .btn-back:hover { color: var(--accent); transform: translateX(-5px); }
         @keyframes pulse-border { 0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 85, 0.5); } 50% { box-shadow: 0 0 25px rgba(255, 0, 85, 0.9); } }
+
+        /* --- NEU: CUSTOM PROFIL STYLES --- */
+        .bio-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 3px solid var(--accent);
+            padding: 10px 15px;
+            font-style: italic;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 20px;
+            border-radius: 0 10px 10px 0;
+        }
+
+        .social-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .social-btn {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .social-btn:hover { transform: translateY(-5px); }
+        .s-twitch { color: #9146FF; } .s-twitch:hover { background: #9146FF; color: white; box-shadow: 0 0 15px #9146FF; border-color: #9146FF;}
+        .s-kick { color: #53FC18; } .s-kick:hover { background: #53FC18; color: black; box-shadow: 0 0 15px #53FC18; border-color: #53FC18;}
+        .s-youtube { color: #FF0000; } .s-youtube:hover { background: #FF0000; color: white; box-shadow: 0 0 15px #FF0000; border-color: #FF0000;}
+        .s-insta { color: #E1306C; } .s-insta:hover { background: #E1306C; color: white; box-shadow: 0 0 15px #E1306C; border-color: #E1306C;}
+
+        .btn-edit-profile {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            transition: 0.3s;
+            margin-top: 15px;
+        }
+        .btn-edit-profile:hover {
+            background: var(--accent);
+            color: #000;
+            box-shadow: 0 0 15px var(--accent);
+        }
+
+        /* --- MODAL STYLES --- */
+        .modal-content { background: #15151e; border: 1px solid var(--accent); border-radius: 15px; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+        .modal-header { border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .modal-footer { border-top: 1px solid rgba(255,255,255,0.05); }
+        .form-control, .form-select { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; }
+        .form-control:focus, .form-select:focus { background: rgba(0,0,0,0.8); border-color: var(--accent); color: white; box-shadow: 0 0 10px rgba(251, 191, 36, 0.2); }
+        .input-group-text { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; }
+        .btn-close { filter: invert(1); }
+        
+        .color-picker-wrapper { display: flex; align-items: center; gap: 15px; }
+        input[type="color"] { -webkit-appearance: none; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; padding: 0; background: none; }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; }
     </style>
 </head>
 <body>
@@ -62,8 +141,23 @@ const formatFullTime = (mins) => {
         <% if(userData.isStreaming) { %><div class="live-badge">LIVE</div><% } %>
     </div>
 
-    <h2 class="fw-bold mb-0 text-white"><%= userData.displayName %></h2>
-    <div class="opacity-50 small mb-4">@<%= userData.username %></div>
+    <h2 class="fw-bold mb-0 text-white" style="text-shadow: 0 0 10px var(--accent);"><%= userData.displayName %></h2>
+    <div class="opacity-50 small mb-3">@<%= userData.username %></div>
+
+    <% if (userData.bio) { %>
+        <div class="bio-box">
+            "<%= userData.bio %>"
+        </div>
+    <% } %>
+
+    <% if (userData.twitch || userData.kick || userData.youtube || userData.instagram) { %>
+        <div class="social-container">
+            <% if (userData.twitch) { %><a href="<%= userData.twitch %>" target="_blank" class="social-btn s-twitch" title="Twitch"><i class="fab fa-twitch"></i></a><% } %>
+            <% if (userData.kick) { %><a href="<%= userData.kick %>" target="_blank" class="social-btn s-kick" title="Kick"><i class="fas fa-play"></i></a><% } %>
+            <% if (userData.youtube) { %><a href="<%= userData.youtube %>" target="_blank" class="social-btn s-youtube" title="YouTube"><i class="fab fa-youtube"></i></a><% } %>
+            <% if (userData.instagram) { %><a href="<%= userData.instagram %>" target="_blank" class="social-btn s-insta" title="Instagram"><i class="fab fa-instagram"></i></a><% } %>
+        </div>
+    <% } %>
 
     <div class="p-3 rounded-4 mb-4" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
         <img src="/images/ranks/<%= currentRank.img || '1.png' %>" class="rank-icon" alt="<%= currentRank.name %>">
@@ -80,14 +174,90 @@ const formatFullTime = (mins) => {
             <div class="progress-bar" style="width: <%= progress %>%; background: <%= currentRank.color %>; box-shadow: 0 0 10px <%= currentRank.color %>;"></div>
         </div>
         <div class="small mt-2" style="color: var(--accent); opacity: 0.8;">
-            Noch <%= formatFullTime(nextRank.min - userData.effectiveTotal) %> bis <strong><%= nextRank.name %></strong>
+            Noch <%= formatFullTime(nextRank.min - userData.effectiveTotal) %> bis <strong style="color: <%= nextRank.color %>"><%= nextRank.name %></strong>
         </div>
     <% } else { %>
         <div class="text-warning fw-bold mt-3"><i class="fas fa-star me-1"></i> Maximales Level erreicht!</div>
     <% } %>
 
-    <a href="/leaderboard/<%= guild.id %>" class="btn-back"><i class="fas fa-arrow-left me-2"></i> Zurück zum Leaderboard</a>
+    <% if (typeof loggedInUser !== 'undefined' && loggedInUser && loggedInUser.id === userData.userId) { %>
+        <button class="btn-edit-profile w-100" data-bs-toggle="modal" data-bs-target="#editModal">
+            <i class="fas fa-cog me-2"></i> Profil anpassen
+        </button>
+    <% } %>
+
+    <a href="/leaderboard/<%= guild.id %>" class="btn-back d-block"><i class="fas fa-arrow-left me-2"></i> Zurück zum Leaderboard</a>
 </div>
 
+<% if (typeof loggedInUser !== 'undefined' && loggedInUser && loggedInUser.id === userData.userId) { %>
+<div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-white"><i class="fas fa-paint-brush me-2" style="color: var(--accent);"></i> Profil Design</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="/profile/<%= guild.id %>/<%= userData.userId %>/edit" method="POST">
+                <div class="modal-body text-start">
+                    
+                    <div class="mb-4">
+                        <label class="form-label text-white-50 small fw-bold">Profilfarbe (Theme)</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" name="profileColor" value="<%= userData.profileColor || '#fbbf24' %>" id="colorPicker">
+                            <span class="text-white small" id="colorHex"><%= userData.profileColor || '#fbbf24' %></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label text-white-50 small fw-bold">Über mich (Bio)</label>
+                        <textarea name="bio" class="form-control" rows="2" placeholder="Schreibe etwas über dich..." maxlength="120"><%= userData.bio || '' %></textarea>
+                        <div class="form-text text-white-50" style="font-size: 0.7rem;">Maximal 120 Zeichen.</div>
+                    </div>
+
+                    <h6 class="text-white mt-4 mb-3 border-bottom border-secondary pb-2"><i class="fas fa-link me-2"></i> Social Media Links</h6>
+                    
+                    <div class="input-group mb-2 input-group-sm">
+                        <span class="input-group-text"><i class="fab fa-twitch text-white"></i></span>
+                        <input type="url" name="twitch" class="form-control" placeholder="https://twitch.tv/..." value="<%= userData.twitch || '' %>">
+                    </div>
+                    
+                    <div class="input-group mb-2 input-group-sm">
+                        <span class="input-group-text"><i class="fas fa-play text-white"></i></span>
+                        <input type="url" name="kick" class="form-control" placeholder="https://kick.com/..." value="<%= userData.kick || '' %>">
+                    </div>
+
+                    <div class="input-group mb-2 input-group-sm">
+                        <span class="input-group-text"><i class="fab fa-youtube text-white"></i></span>
+                        <input type="url" name="youtube" class="form-control" placeholder="https://youtube.com/..." value="<%= userData.youtube || '' %>">
+                    </div>
+
+                    <div class="input-group mb-2 input-group-sm">
+                        <span class="input-group-text"><i class="fab fa-instagram text-white"></i></span>
+                        <input type="url" name="instagram" class="form-control" placeholder="https://instagram.com/..." value="<%= userData.instagram || '' %>">
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-sm rounded-pill px-4 fw-bold" style="background: var(--accent); color: #000;">Speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Kleines Script, um den Hex-Code neben dem Colorpicker live zu aktualisieren
+    const colorPicker = document.getElementById('colorPicker');
+    const colorHex = document.getElementById('colorHex');
+    if(colorPicker && colorHex) {
+        colorPicker.addEventListener('input', (e) => {
+            colorHex.textContent = e.target.value.toUpperCase();
+        });
+    }
+</script>
+<% } %>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
