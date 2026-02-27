@@ -67,7 +67,7 @@
             </ul>
         </div>
     <% } else { %>
-        <a href="/login" class="btn btn-sm shadow-lg d-flex align-items-center" style="background: #5865F2; color: white; border-radius: 20px; font-weight: bold; padding: 8px 16px; border: 1px solid rgba(255,255,255,0.2); transition: 0.3s;">
+        <a href="/login?returnTo=/bonushunt" class="btn btn-sm shadow-lg d-flex align-items-center" style="background: #5865F2; color: white; border-radius: 20px; font-weight: bold; padding: 8px 16px; border: 1px solid rgba(255,255,255,0.2); transition: 0.3s;">
             <i class="fab fa-discord me-2 fs-5"></i> Login
         </a>
     <% } %>
@@ -86,7 +86,7 @@
             <i class="fab fa-discord fa-4x mb-3 text-white-50"></i>
             <h3 class="fw-bold">Login erforderlich</h3>
             <p class="opacity-75 mb-4">Du musst dich anmelden, damit der Bot deinen eigenen Hunt deinem Discord-Profil zuordnen kann.</p>
-            <a href="/login" class="btn btn-cyber w-100 py-3"><i class="fab fa-discord me-2"></i> Mit Discord einloggen</a>
+            <a href="/login?returnTo=/bonushunt" class="btn btn-cyber w-100 py-3"><i class="fab fa-discord me-2"></i> Mit Discord einloggen</a>
         </div>
 
     <% } else if (!hunt) { %>
