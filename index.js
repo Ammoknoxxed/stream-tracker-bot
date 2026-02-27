@@ -223,7 +223,8 @@ app.get('/leaderboard/:guildId', async (req, res) => {
             allTimeLeaderboard: enrichedAllTime, 
             monthlyLeaderboard: enrichedMonthly, 
             monthName: "Gesamtstatistik", 
-            ranks 
+            ranks,
+            loggedInUser: req.user // Damit der Login-Button auch hier klappt
         });
     } catch (err) { 
         console.error(err);
@@ -231,7 +232,12 @@ app.get('/leaderboard/:guildId', async (req, res) => {
     }
 });
 
-app.get('/login', passport.authenticate('discord'));
+// --- LOGIN ROUTEN UPDATE ---
+app.get('/login', (req, res, next) => {
+    // Merke dir, von welcher Seite der User kam (damit wir ihn dorthin zurückschicken)
+    req.session.returnTo = req.headers.referer || '/';
+    next();
+}, passport.authenticate('discord'));
 
 app.get('/logout', (req, res, next) => {
     req.logout(function(err) {
@@ -252,7 +258,11 @@ app.get('/auth/discord/callback',
         if (req.user) {
             log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
         }
-        res.redirect('/dashboard');
+        
+        // Sende ihn zurück zur Ursprungsseite (oder ins Hauptmenü)
+        const redirectTo = req.session.returnTo || '/';
+        delete req.session.returnTo; 
+        res.redirect(redirectTo);
     }
 );
 
@@ -361,7 +371,6 @@ app.post('/profile/:guildId/:userId/edit', async (req, res) => {
         res.status(500).send("Fehler beim Speichern des Profils.");
     }
 });
-
 
 // --- DASHBOARD ACTIONS ---
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
