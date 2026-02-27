@@ -18,7 +18,7 @@ function log(message) {
 // Multer Setup (Speichert Bilder kurz im RAM, bevor sie an Discord gehen)
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- 0. KONFIGURATION YEEEES ---
+// --- 0. KONFIGURATION YEEEEES ---
 
 // Ränge
 const ranks = [
@@ -1216,3 +1216,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
