@@ -97,23 +97,31 @@ const bonusHuntSchema = new mongoose.Schema({
 });
 const BonusHunt = mongoose.model('BonusHunt', bonusHuntSchema);
 
-// Hilfsfunktion: Baut das Embed für den Discord-Thread
+// Hilfsfunktion: Baut das Embed für den Discord-Thread (Hübscher & Strukturierter)
 function buildHuntEmbed(hunt) {
     const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
     const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
+    const profit = totalWin - totalBet;
     
     let slotList = hunt.slots.map((s, i) => {
-        let status = s.isOpened ? `✅ Win: **${s.win.toFixed(2)}€** (${(s.win/s.bet).toFixed(2)}x)` : '⏳ Wartet auf Opening...';
-        return `**${i+1}. ${s.name}** | Einsatz: ${s.bet.toFixed(2)}€ | ${status}`;
+        let status = s.isOpened ? `✅ **${s.win.toFixed(2)}€** \`(${(s.win/s.bet).toFixed(2)}x)\`` : '⏳ *Wartet...*';
+        return `**${i+1}.** ${s.name} (Bet: \`${s.bet.toFixed(2)}€\`) ➔ ${status}`;
     }).join('\n');
     
-    if (!slotList) slotList = "Noch keine Slots gesammelt.";
+    if (!slotList) slotList = "Noch keine Slots gesammelt. Sammel fleißig! 🍀";
 
     return new EmbedBuilder()
-        .setTitle(`🎰 Live Bonus Hunt von ${hunt.username}`)
-        .setDescription(`**Start-Balance:** ${hunt.startBalance.toFixed(2)}€\n**Gesammelte Slots:** ${hunt.slots.length}\n**Gesamteinsatz:** ${totalBet.toFixed(2)}€\n\n${slotList}`)
+        .setTitle(`🎰 Live Bonus Hunt: ${hunt.username}`)
+        .setDescription(`${slotList}`)
+        .addFields(
+            { name: '💰 Start-Guthaben', value: `\`${hunt.startBalance.toFixed(2)}€\``, inline: true },
+            { name: '🎯 Gesamteinsatz', value: `\`${totalBet.toFixed(2)}€\``, inline: true },
+            { name: '🎰 Boni gesammelt', value: `\`${hunt.slots.length}\``, inline: true },
+            { name: '🏆 Aktueller Win', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
+            { name: '📈 Profit/Loss', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
+        )
         .setColor('#fbbf24')
-        .setFooter({ text: 'Juicer Bonus Hunt Tracker' })
+        .setFooter({ text: 'Juicer Bonus Hunt Tracker • Live Updates' })
         .setTimestamp();
 }
 
@@ -216,7 +224,7 @@ async function syncUserRoles(userData, now = new Date()) {
 
 // --- EXPRESS / DASHBOARD SETUP ---
 const app = express();
-app.set('trust proxy', 1); // WICHTIG: Damit Railway die Session-Daten nicht blockiert
+app.set('trust proxy', 1); // WICHTIG: Damit Railway die Session-Daten und Redirects nicht blockiert
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
@@ -231,15 +239,11 @@ passport.use(new Strategy({
     proxy: true
 }, (accessToken, refreshToken, profile, done) => done(null, profile)));
 
-// VERBESSERTE SESSION EINSTELLUNGEN FÜR RAILWAY
 app.use(session({ 
     secret: 'stream-tracker-secret', 
     resave: false, 
-    saveUninitialized: true, // Muss true sein für Redirect-Speicherung!
-    cookie: { 
-        secure: 'auto', // Passt sich an HTTP/HTTPS an
-        maxAge: 1000 * 60 * 60 * 24 // 24 Stunden Session
-    } 
+    saveUninitialized: true,
+    cookie: { secure: 'auto', maxAge: 1000 * 60 * 60 * 24 } 
 }));
 
 app.use(passport.initialize());
@@ -268,7 +272,7 @@ app.get('/leaderboard/:guildId', async (req, res) => {
             monthlyLeaderboard: enrichedMonthly, 
             monthName: "Gesamtstatistik", 
             ranks,
-            loggedInUser: req.user
+            loggedInUser: req.user 
         });
     } catch (err) { 
         console.error(err);
@@ -276,7 +280,7 @@ app.get('/leaderboard/:guildId', async (req, res) => {
     }
 });
 
-// --- LOGIN ROUTEN UPDATE ---
+// --- LOGIN ROUTEN UPDATE (State-Methode) ---
 app.get('/login', (req, res, next) => {
     let backURL = req.query.returnTo || req.headers.referer || '/';
     
@@ -363,12 +367,18 @@ app.post('/bonushunt/start', async (req, res) => {
         });
 
         const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance, threadId: thread.id });
-        const summaryMsg = await thread.send({ embeds: [buildHuntEmbed(newHunt)] });
+        
+        // PING im Thread selbst!
+        const summaryMsg = await thread.send({ 
+            content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`, 
+            embeds: [buildHuntEmbed(newHunt)] 
+        });
         
         newHunt.summaryMsgId = summaryMsg.id;
         await newHunt.save();
 
-        await huntChannel.send(`🚨 **${req.user.username}** hat gerade einen neuen Bonus Hunt mit **${startBalance.toFixed(2)}€** gestartet! Verfolge es live hier: <#${thread.id}>`);
+        // PING im Main-Channel!
+        await huntChannel.send(`🚨 <@${req.user.id}> hat gerade einen neuen **Bonus Hunt** mit \`${startBalance.toFixed(2)}€\` gestartet!\n👀 Verfolge das Spektakel live hier: <#${thread.id}>`);
 
         res.redirect('/bonushunt');
     } catch (err) {
@@ -393,7 +403,9 @@ app.post('/bonushunt/add', async (req, res) => {
         if (thread) {
             const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
             if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
-            await thread.send(`➕ **${slotName}** auf **${parseFloat(betSize).toFixed(2)}€** Einsatz gesammelt!`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
+            
+            // Schickere Hinzufügen-Nachricht
+            await thread.send(`🎰 **Slot eingesammelt:** \`${slotName}\` (Einsatz: \`${parseFloat(betSize).toFixed(2)}€\`)`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
         }
 
         res.redirect('/bonushunt');
@@ -422,7 +434,15 @@ app.post('/bonushunt/open/:slotId', async (req, res) => {
             if (thread) {
                 const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
                 if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
-                await thread.send(`🎉 **${slot.name}** hat **${winAmount.toFixed(2)}€** gezahlt (${(winAmount/slot.bet).toFixed(2)}x)!`);
+                
+                // Dynamische Emojis für fette Hits!
+                const multi = winAmount / slot.bet;
+                let emoji = '✅';
+                if (multi >= 100) emoji = '🔥';
+                if (multi >= 500) emoji = '🚀';
+                if (multi >= 1000) emoji = '🤯';
+
+                await thread.send(`${emoji} **${slot.name}** geöffnet! Gewinn: **${winAmount.toFixed(2)}€** \`(${multi.toFixed(2)}x)\``);
             }
         }
         res.redirect('/bonushunt');
@@ -450,11 +470,17 @@ app.post('/bonushunt/finish', async (req, res) => {
         if (thread) {
             const finalEmbed = new EmbedBuilder()
                 .setTitle(`🏁 Bonus Hunt Beendet!`)
-                .setDescription(`**Ergebnis von ${hunt.username}**\n\n💰 **Gesamteinsatz:** ${totalBet.toFixed(2)}€\n🏆 **Gesamtgewinn:** ${totalWin.toFixed(2)}€\n\n📊 **Profit/Loss:** ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€`)
+                .setDescription(`Die Walzen stehen still. Hier ist die Endabrechnung für <@${hunt.userId}>:`)
+                .addFields(
+                    { name: '🎯 Gesamteinsatz', value: `\`${totalBet.toFixed(2)}€\``, inline: true },
+                    { name: '🏆 Gesamtgewinn', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
+                    { name: profit >= 0 ? '📈 PROFIT' : '📉 LOSS', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
+                )
                 .setColor(profit >= 0 ? '#2ecc71' : '#e74c3c')
+                .setFooter({ text: 'GG! Bis zum nächsten Mal.' })
                 .setTimestamp();
 
-            await thread.send({ content: `Der Bonus Hunt ist vorbei!`, embeds: [finalEmbed] });
+            await thread.send({ content: `Der Hunt ist vorbei! Wie war die Ausbeute, Chat?`, embeds: [finalEmbed] });
             await thread.setArchived(true);
         }
 
@@ -1183,4 +1209,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
