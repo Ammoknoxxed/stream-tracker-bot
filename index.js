@@ -54,7 +54,6 @@ const guildConfigSchema = new mongoose.Schema({
 });
 const GuildConfig = mongoose.model('GuildConfig', guildConfigSchema);
 
-// --- UPDATE: CUSTOM PROFILE FELDER ---
 const streamUserSchema = new mongoose.Schema({
     userId: String,
     guildId: String,
@@ -64,14 +63,7 @@ const streamUserSchema = new mongoose.Schema({
     monthlyMinutes: { type: Number, default: 0 }, 
     lastStreamStart: Date,
     isStreaming: { type: Boolean, default: false },
-    lastNotifiedRank: { type: String, default: "Casino Gast" },
-    // Profil Customization
-    profileColor: { type: String, default: "#fbbf24" }, // Standard: Gold
-    bio: { type: String, default: "" },
-    twitch: { type: String, default: "" },
-    kick: { type: String, default: "" },
-    youtube: { type: String, default: "" },
-    instagram: { type: String, default: "" }
+    lastNotifiedRank: { type: String, default: "Casino Gast" }
 });
 const StreamUser = mongoose.model('StreamUser', streamUserSchema);
 
@@ -290,7 +282,6 @@ app.get('/roadmap', (req, res) => {
     res.render('roadmap', { projects, guild });
 });
 
-// --- UPDATE: PROFIL LADEN MIT LOGGED IN USER ---
 app.get('/profile/:guildId/:userId', async (req, res) => {
     try {
         const { guildId, userId } = req.params;
@@ -322,46 +313,13 @@ app.get('/profile/:guildId/:userId', async (req, res) => {
         res.render('profile', { 
             guild, 
             userData: { ...userData.toObject(), effectiveTotal, displayName, avatar }, 
-            ranks,
-            loggedInUser: req.user // WICHTIG: Erlaubt dem Frontend zu prüfen, wer gerade schaut
+            ranks 
         });
     } catch (err) { 
         console.error(err);
         res.status(500).send("Fehler beim Laden des Profils."); 
     }
 });
-
-// --- NEU: PROFIL BEARBEITEN POST-ROUTE ---
-app.post('/profile/:guildId/:userId/edit', async (req, res) => {
-    if (!req.isAuthenticated()) return res.redirect('/login');
-    
-    // Sicherheit: Nur der Profilbesitzer darf speichern
-    if (req.user.id !== req.params.userId) {
-        return res.status(403).send("Zugriff verweigert: Du kannst nur dein eigenes Profil bearbeiten.");
-    }
-
-    const { profileColor, bio, twitch, kick, youtube, instagram } = req.body;
-    
-    try {
-        await StreamUser.findOneAndUpdate(
-            { userId: req.params.userId, guildId: req.params.guildId },
-            { 
-                profileColor: profileColor || '#fbbf24', 
-                bio: bio || '', 
-                twitch: twitch || '', 
-                kick: kick || '', 
-                youtube: youtube || '', 
-                instagram: instagram || '' 
-            }
-        );
-        log(`📝 PROFIL UPDATE: ${req.user.username} hat sein Profil farblich/textlich angepasst.`);
-        res.redirect(`/profile/${req.params.guildId}/${req.params.userId}`);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("Fehler beim Speichern des Profils.");
-    }
-});
-
 
 // --- DASHBOARD ACTIONS ---
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
