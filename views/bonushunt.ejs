@@ -23,8 +23,23 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
             transition: all 0.3s ease;
         }
-        .form-control { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; }
-        .form-control:focus { background: rgba(0,0,0,0.8); border-color: var(--accent); color: white; box-shadow: 0 0 10px rgba(251, 191, 36, 0.2); }
+        
+        /* HIER IST DER FIX FÜR DIE WEISSE SCHRIFT */
+        .form-control { 
+            background: rgba(0,0,0,0.6) !important; 
+            border: 1px solid rgba(255,255,255,0.1) !important; 
+            color: white !important; 
+            font-weight: 500;
+        }
+        .form-control:focus { 
+            background: rgba(0,0,0,0.9) !important; 
+            border-color: var(--accent) !important; 
+            color: white !important; 
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.3) !important; 
+        }
+        .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.4) !important;
+        }
         
         .btn-cyber { 
             background: var(--accent); color: black; font-weight: bold; border-radius: 10px; transition: 0.3s; 
@@ -145,16 +160,16 @@
                     <form action="/bonushunt/add" method="POST">
                         <div class="mb-3">
                             <label class="form-label small opacity-75">Slot Name</label>
-                            <input type="text" name="slotName" class="form-control bg-dark" placeholder="z.B. Gates of Olympus" required>
+                            <input type="text" name="slotName" class="form-control" placeholder="z.B. Gates of Olympus" required>
                         </div>
                         <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <label class="form-label small text-white fw-bold">Einsatz / Bet (€)</label>
-                                <input type="number" step="0.01" name="betSize" class="form-control bg-dark" placeholder="2.00" required>
+                                <input type="number" step="0.01" name="betSize" class="form-control" placeholder="2.00" required>
                             </div>
                             <div class="col-6">
                                 <label class="form-label small text-accent fw-bold">Wert (€)</label>
-                                <input type="number" step="0.01" name="bonusValue" class="form-control bg-dark border-warning" placeholder="Kosten" required>
+                                <input type="number" step="0.01" name="bonusValue" class="form-control border-warning" placeholder="Kosten" required>
                             </div>
                         </div>
                         <button type="submit" class="btn btn-outline-warning w-100 mb-4 fw-bold">Hinzufügen</button>
@@ -232,7 +247,7 @@
                                                             <input type="file" name="screenshot" accept="image/*" style="display: none;" onchange="this.previousElementSibling.className = 'fas fa-check-circle text-success'; this.parentElement.classList.replace('btn-outline-secondary', 'btn-outline-success');">
                                                         </label>
 
-                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end border-success text-white fw-bold" style="width: 100px; background: rgba(0,0,0,0.5); height: 31px;" placeholder="Win (€)" required>
+                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end border-success text-white fw-bold" style="width: 100px; height: 31px;" placeholder="Win (€)" required>
                                                         
                                                         <button type="submit" class="btn btn-sm btn-success fw-bold px-3" style="height: 31px;"><i class="fas fa-check"></i></button>
                                                     </form>
