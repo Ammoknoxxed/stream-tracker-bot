@@ -356,7 +356,6 @@ const formatFullTime = (totalMins) => {
     return hours > 0 ? `${hours} Std. ${mins} Min.` : `${mins} Min.`;
 };
 
-// --- DIESE FUNKTION IST JETZT DYNAMISCH FÜR BEIDE LISTEN ---
 function renderLeaderboard(userList, timeKey, tableId) { %>
     <% if(userList.length >= 1) { %>
     <div class="top-three">
