@@ -278,10 +278,9 @@ app.get('/leaderboard/:guildId', async (req, res) => {
 
 // --- LOGIN ROUTEN UPDATE ---
 app.get('/login', (req, res, next) => {
-    // 1. Wir holen das Ziel aus dem Parameter (?returnTo=...) oder als Notnagel den Referer
     let backURL = req.query.returnTo || req.headers.referer || '/';
     
-    // Vermeide Redirect-Loops, wenn jemand direkt auf /login war
+    // Vermeide Redirect-Loops
     try {
         if (backURL.startsWith('http')) {
             backURL = new URL(backURL).pathname;
@@ -290,15 +289,11 @@ app.get('/login', (req, res, next) => {
 
     if (backURL.includes('/login')) backURL = '/';
 
-    // 2. In die Session speichern
-    req.session.returnTo = backURL;
+    // Wir kodieren das Ziel als Base64-String und schicken es als "state" direkt an Discord
+    const stateString = Buffer.from(backURL).toString('base64');
     
-    // 3. Wichtig: Warten bis die DB/Session es geschrieben hat, BEVOR Discord aufgerufen wird
-    req.session.save((err) => {
-        if (err) console.error("Session Save Error:", err);
-        next();
-    });
-}, passport.authenticate('discord'));
+    passport.authenticate('discord', { state: stateString })(req, res, next);
+});
 
 app.get('/logout', (req, res, next) => {
     req.logout(function(err) {
@@ -320,18 +315,27 @@ app.get('/auth/discord/callback',
             log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
         }
         
-        // 4. Zielpfad wieder aus der Session holen
-        const redirectTo = req.session.returnTo || '/';
-        delete req.session.returnTo; 
-        
-        req.session.save(() => {
-            // Wenn der User von der nackten Startseite kommt, ins Admin-Dashboard leiten
-            if (redirectTo === '/') {
-                res.redirect('/dashboard');
-            } else {
-                res.redirect(redirectTo);
+        let redirectTo = '/dashboard'; // Standard-Ziel
+
+        // Wir lesen das Ziel wieder aus der Discord URL aus
+        if (req.query.state) {
+            try {
+                const decodedState = Buffer.from(req.query.state, 'base64').toString('utf-8');
+                // Sicherheits-Check, ob es wirklich ein lokaler Pfad ist
+                if (decodedState && decodedState.startsWith('/')) {
+                    redirectTo = decodedState;
+                }
+            } catch(e) {
+                console.error("Konnte State nicht entschlüsseln:", e);
             }
-        });
+        }
+        
+        // Wenn er von der Startseite kommt, ab ins Admin-Dashboard
+        if (redirectTo === '/') {
+            redirectTo = '/dashboard';
+        }
+        
+        res.redirect(redirectTo);
     }
 );
 
@@ -1179,3 +1183,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
