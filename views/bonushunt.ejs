@@ -45,9 +45,11 @@
             100% { transform: translateY(-20vh) translateX(100px); opacity: 0; }
         }
 
-        /* Nav Dropdown für User */
         .dropdown-menu-dark { background-color: rgba(20, 20, 30, 0.95); backdrop-filter: blur(10px); }
         .dropdown-item:hover { background-color: rgba(255, 255, 255, 0.1); }
+        
+        .thumb-preview { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; border: 1px solid var(--accent); cursor: pointer; transition: 0.3s; }
+        .thumb-preview:hover { transform: scale(1.1); box-shadow: 0 0 10px var(--accent); }
     </style>
 </head>
 <body>
@@ -106,9 +108,9 @@
 
     <% } else { %>
         <% 
-            const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
+            const totalInvest = hunt.slots.reduce((acc, s) => acc + s.value, 0);
             const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
-            const profit = totalWin - totalBet;
+            const profit = totalWin - totalInvest;
             const isProfit = profit >= 0;
             const profitColor = isProfit ? '#2ecc71' : '#f43f5e';
         %>
@@ -122,8 +124,8 @@
             </div>
             <div class="col-md-4">
                 <div class="glass-card p-4 text-center" style="border-color: var(--accent); box-shadow: inset 0 0 15px rgba(251,191,36,0.1);">
-                    <div class="small opacity-50 text-uppercase mb-1" style="color: var(--accent);">Gesamteinsatz</div>
-                    <div class="fs-3 fw-bold" style="color: var(--accent);"><%= totalBet.toFixed(2) %>€</div>
+                    <div class="small opacity-50 text-uppercase mb-1" style="color: var(--accent);">Gesamt-Investiert</div>
+                    <div class="fs-3 fw-bold" style="color: var(--accent);"><%= totalInvest.toFixed(2) %>€</div>
                 </div>
             </div>
             <div class="col-md-4">
@@ -145,9 +147,15 @@
                             <label class="form-label small opacity-75">Slot Name</label>
                             <input type="text" name="slotName" class="form-control bg-dark" placeholder="z.B. Gates of Olympus" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label small opacity-75">Einsatz / Bet (€)</label>
-                            <input type="number" step="0.01" name="betSize" class="form-control bg-dark" placeholder="z.B. 2.00" required>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label small opacity-75">Bet (€)</label>
+                                <input type="number" step="0.01" name="betSize" class="form-control bg-dark" placeholder="2.00" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-accent">Wert (€)</label>
+                                <input type="number" step="0.01" name="bonusValue" class="form-control bg-dark border-warning" placeholder="Kosten" required>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-outline-warning w-100 mb-4 fw-bold">Hinzufügen</button>
                     </form>
@@ -179,8 +187,8 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Slot</th>
-                                        <th>Bet</th>
-                                        <th class="text-end">Ergebnis / Gewinn</th>
+                                        <th>Einsatz / Wert</th>
+                                        <th class="text-end" style="min-width: 250px;">Ergebnis</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -188,16 +196,33 @@
                                         <tr>
                                             <td class="opacity-50"><%= index + 1 %></td>
                                             <td class="fw-bold text-white"><%= slot.name %></td>
-                                            <td class="text-accent"><%= slot.bet.toFixed(2) %>€</td>
+                                            <td>
+                                                <div class="small opacity-75"><%= slot.bet.toFixed(2) %>€ Bet</div>
+                                                <div class="text-accent fw-bold"><%= slot.value.toFixed(2) %>€ Wert</div>
+                                            </td>
                                             <td class="text-end">
                                                 <% if (slot.isOpened) { %>
-                                                    <span style="color: #2ecc71; font-weight: bold; font-size: 1.1rem;"><%= slot.win.toFixed(2) %>€</span>
-                                                    <br>
-                                                    <span class="small opacity-50"><%= (slot.win / slot.bet).toFixed(2) %>x</span>
+                                                    <div class="d-flex align-items-center justify-content-end gap-3">
+                                                        <div class="text-end">
+                                                            <span style="color: #2ecc71; font-weight: bold; font-size: 1.1rem;"><%= slot.win.toFixed(2) %>€</span>
+                                                            <br>
+                                                            <span class="small opacity-50"><%= (slot.win / slot.bet).toFixed(2) %>x</span>
+                                                        </div>
+                                                        <% if (slot.imageUrl) { %>
+                                                            <a href="<%= slot.imageUrl %>" target="_blank" title="Screenshot ansehen">
+                                                                <img src="<%= slot.imageUrl %>" class="thumb-preview">
+                                                            </a>
+                                                        <% } else { %>
+                                                            <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.05); border-radius: 8px; display:flex; align-items:center; justify-content:center; opacity:0.5;">
+                                                                <i class="fas fa-image"></i>
+                                                            </div>
+                                                        <% } %>
+                                                    </div>
                                                 <% } else { %>
-                                                    <form action="/bonushunt/open/<%= slot._id %>" method="POST" class="d-flex justify-content-end gap-2">
-                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end" style="width: 100px; background: rgba(0,0,0,0.5);" placeholder="Win (€)" required>
-                                                        <button type="submit" class="btn btn-sm btn-success fw-bold px-3"><i class="fas fa-check"></i></button>
+                                                    <form action="/bonushunt/open/<%= slot._id %>" method="POST" enctype="multipart/form-data" class="d-flex justify-content-end gap-2 align-items-center">
+                                                        <input type="file" name="screenshot" accept="image/*" class="form-control form-control-sm bg-dark" style="width: 120px; font-size: 0.7rem;" title="Screenshot hochladen">
+                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end border-success" style="width: 90px; background: rgba(0,0,0,0.5);" placeholder="Win (€)" required>
+                                                        <button type="submit" class="btn btn-sm btn-success fw-bold"><i class="fas fa-check"></i></button>
                                                     </form>
                                                 <% } %>
                                             </td>
