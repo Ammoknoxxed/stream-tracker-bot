@@ -17,7 +17,6 @@
             color: white; font-family: 'Segoe UI', Roboto, sans-serif; min-height: 100vh; padding: 40px 20px;
         }
         
-        /* DER FIX FÜR DIE GOLDENE SCHRIFT */
         .text-accent { color: var(--accent) !important; }
         
         .glass-card {
@@ -126,31 +125,38 @@
 
     <% } else { %>
         <% 
-            const totalInvest = hunt.slots.reduce((acc, s) => acc + s.value, 0);
+            // Die Logik für die perfekte Berechnung
+            const lastBal = hunt.slots.length > 0 ? hunt.slots[hunt.slots.length - 1].currentBalance : hunt.startBalance;
+            const totalInvest = hunt.startBalance - lastBal; // Echtes verbranntes Geld
+            const totalWert = hunt.slots.reduce((acc, s) => acc + s.value, 0); // Idealer Wert
             const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
+            
             const profit = totalWin - totalInvest;
             const isProfit = profit >= 0;
             const profitColor = isProfit ? '#2ecc71' : '#f43f5e';
         %>
         
-        <div class="row g-4 mb-4">
+        <div class="row g-3 mb-4">
             <div class="col-md-4">
-                <div class="glass-card p-4 text-center">
-                    <div class="small opacity-50 text-uppercase mb-1">Start Balance</div>
-                    <div class="fs-3 fw-bold text-white"><%= hunt.startBalance.toFixed(2) %>€</div>
+                <div class="glass-card p-3 text-center h-100">
+                    <div class="small opacity-50 text-uppercase mb-1">Start & Aktuell</div>
+                    <div class="fs-4 fw-bold text-white"><%= hunt.startBalance.toFixed(2) %>€</div>
+                    <div class="small text-info fw-bold"><i class="fas fa-wallet me-1"></i> Übrig: <%= lastBal.toFixed(2) %>€</div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="glass-card p-4 text-center" style="border-color: var(--accent); box-shadow: inset 0 0 15px rgba(251,191,36,0.1);">
-                    <div class="small opacity-50 text-uppercase mb-1 text-accent">Gesamt-Investiert</div>
-                    <div class="fs-3 fw-bold text-accent"><%= totalInvest.toFixed(2) %>€</div>
+                <div class="glass-card p-3 text-center h-100" style="border-color: var(--accent); box-shadow: inset 0 0 15px rgba(251,191,36,0.1);">
+                    <div class="small opacity-50 text-uppercase mb-1 text-accent">Kosten & Wert</div>
+                    <div class="fs-4 fw-bold text-accent" title="Das hast du tatsächlich verbrannt">- <%= totalInvest.toFixed(2) %>€</div>
+                    <div class="small text-white-50"><i class="fas fa-gem text-warning me-1"></i> Bonus Wert: <%= totalWert.toFixed(2) %>€</div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="glass-card p-4 text-center">
-                    <div class="small opacity-50 text-uppercase mb-1">Aktueller Profit</div>
-                    <div class="fs-3 fw-bold" style="color: <%= profitColor %>;">
-                        <%= isProfit ? '+' : '' %><%= profit.toFixed(2) %>€
+                <div class="glass-card p-3 text-center h-100">
+                    <div class="small opacity-50 text-uppercase mb-1">Gewinn & Profit</div>
+                    <div class="fs-4 fw-bold" style="color: #2ecc71;">+ <%= totalWin.toFixed(2) %>€</div>
+                    <div class="small fw-bold" style="color: <%= profitColor %>;">
+                        Netto: <%= isProfit ? '+' : '' %><%= profit.toFixed(2) %>€
                     </div>
                 </div>
             </div>
@@ -162,20 +168,24 @@
                     <h5 class="mb-3 text-accent fw-bold"><i class="fas fa-plus-circle me-2"></i> Slot hinzufügen</h5>
                     <form action="/bonushunt/add" method="POST">
                         <div class="mb-3">
-                            <label class="form-label small opacity-75">Slot Name</label>
+                            <label class="form-label small text-white fw-bold">Slot Name</label>
                             <input type="text" name="slotName" class="form-control" placeholder="z.B. Gates of Olympus" required>
                         </div>
                         <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label class="form-label small text-white fw-bold">Einsatz / Bet (€)</label>
+                            <div class="col-4">
+                                <label class="form-label small text-white fw-bold">Bet (€)</label>
                                 <input type="number" step="0.01" name="betSize" class="form-control" placeholder="2.00" required>
                             </div>
-                            <div class="col-6">
+                            <div class="col-4">
                                 <label class="form-label small text-accent fw-bold">Wert (€)</label>
-                                <input type="number" step="0.01" name="bonusValue" class="form-control border-warning" placeholder="Kosten" required>
+                                <input type="number" step="0.01" name="bonusValue" class="form-control border-warning" placeholder="200" required>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small text-info fw-bold">Balance</label>
+                                <input type="number" step="0.01" name="currentBalance" class="form-control border-info" placeholder="<%= lastBal.toFixed(2) %>" required>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-outline-warning w-100 mb-4 fw-bold">Hinzufügen</button>
+                        <button type="submit" class="btn btn-outline-warning w-100 mb-4 fw-bold">Speichern</button>
                     </form>
 
                     <hr class="border-secondary mb-4">
@@ -185,7 +195,7 @@
                             <i class="fas fa-lock me-2"></i> Hunt beenden (Min. 2 Slots)
                         </button>
                     <% } else { %>
-                        <form action="/bonushunt/finish" method="POST" onsubmit="return confirm('Sicher, dass du den Hunt beenden willst?');">
+                        <form action="/bonushunt/finish" method="POST" onsubmit="return confirm('Sicher, dass du den Hunt beenden willst? Der Discord-Thread wird endgültig geschlossen!');">
                             <button type="submit" class="btn btn-danger w-100 fw-bold py-2"><i class="fas fa-flag-checkered me-2"></i> Hunt beenden</button>
                         </form>
                     <% } %>
@@ -211,7 +221,7 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Slot</th>
-                                        <th>Einsatz / Wert</th>
+                                        <th>Stats</th>
                                         <th class="text-end" style="min-width: 250px;">Ergebnis</th>
                                     </tr>
                                 </thead>
@@ -222,7 +232,8 @@
                                             <td class="fw-bold text-white"><%= slot.name %></td>
                                             <td>
                                                 <div class="small text-white mb-1"><i class="fas fa-coins text-white-50 me-1"></i> <%= slot.bet.toFixed(2) %>€ Bet</div>
-                                                <div class="text-accent fw-bold small"><i class="fas fa-gem text-warning me-1"></i> <%= slot.value.toFixed(2) %>€ Wert</div>
+                                                <div class="text-accent fw-bold small mb-1"><i class="fas fa-gem text-warning me-1"></i> <%= slot.value.toFixed(2) %>€ Wert</div>
+                                                <div class="text-info small"><i class="fas fa-wallet text-info me-1"></i> <%= slot.currentBalance.toFixed(2) %>€ Bal</div>
                                             </td>
                                             <td class="text-end">
                                                 <% if (slot.isOpened) { %>
@@ -271,7 +282,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Partikel-Effekt
     const particlesContainer = document.getElementById('particles');
     for (let i = 0; i < 20; i++) {
         const p = document.createElement('div');
