@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const express = require('express');
 const passport = require('passport');
 const { Strategy } = require('passport-discord');
@@ -6,6 +6,7 @@ const session = require('express-session');
 const mongoose = require('mongoose');
 const path = require('path');
 const cron = require('node-cron'); 
+const multer = require('multer'); // NEU: Für Bild-Uploads
 require('dotenv').config();
 
 function log(message) {
@@ -13,6 +14,9 @@ function log(message) {
     const time = now.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
     console.log(`[${time}] ${message}`);
 }
+
+// Multer Setup (Speichert Bilder kurz im RAM, bevor sie an Discord gehen)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // --- 0. KONFIGURATION YEEEES ---
 
@@ -45,7 +49,7 @@ const VERIFY_MOD_CHANNEL_ID = '1473125691058032830';
 const TIME_MOD_CHANNEL_ID = '1021086309860782191';   
 const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; 
 const BAN_ROLE_ID = '1476589330301714482'; // Rolle für Stream-Sperre
-const BONUS_HUNT_CHANNEL_ID = '1476889019303591936'; // NEU: Channel für die Hunt-Threads
+const BONUS_HUNT_CHANNEL_ID = '1476889019303591936'; // Channel für die Hunt-Threads
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -81,15 +85,17 @@ const Warning = mongoose.model('Warning', warningSchema);
 const slotEntrySchema = new mongoose.Schema({
     name: String,
     bet: Number,
+    value: { type: Number, default: 0 }, // NEU: Der Wert des Bonus (Investition)
     win: { type: Number, default: 0 },
-    isOpened: { type: Boolean, default: false }
+    isOpened: { type: Boolean, default: false },
+    imageUrl: { type: String, default: null } // NEU: Link zum Discord-Bild
 });
 
 const bonusHuntSchema = new mongoose.Schema({
     userId: String,
     username: String,
-    threadId: String,       // ID des Discord-Threads
-    summaryMsgId: String,   // ID der Hauptnachricht im Thread
+    threadId: String,
+    summaryMsgId: String,
     startBalance: Number,
     isActive: { type: Boolean, default: true },
     slots: [slotEntrySchema],
@@ -97,15 +103,15 @@ const bonusHuntSchema = new mongoose.Schema({
 });
 const BonusHunt = mongoose.model('BonusHunt', bonusHuntSchema);
 
-// Hilfsfunktion: Baut das Embed für den Discord-Thread (Hübscher & Strukturierter)
+// Hilfsfunktion: Baut das Embed für den Discord-Thread
 function buildHuntEmbed(hunt) {
-    const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
+    const totalInvest = hunt.slots.reduce((acc, s) => acc + s.value, 0);
     const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
-    const profit = totalWin - totalBet;
+    const profit = totalWin - totalInvest;
     
     let slotList = hunt.slots.map((s, i) => {
         let status = s.isOpened ? `✅ **${s.win.toFixed(2)}€** \`(${(s.win/s.bet).toFixed(2)}x)\`` : '⏳ *Wartet...*';
-        return `**${i+1}.** ${s.name} (Bet: \`${s.bet.toFixed(2)}€\`) ➔ ${status}`;
+        return `**${i+1}.** ${s.name} (Bet: \`${s.bet.toFixed(2)}€\`, Wert: \`${s.value.toFixed(2)}€\`) ➔ ${status}`;
     }).join('\n');
     
     if (!slotList) slotList = "Noch keine Slots gesammelt. Sammel fleißig! 🍀";
@@ -115,7 +121,7 @@ function buildHuntEmbed(hunt) {
         .setDescription(`${slotList}`)
         .addFields(
             { name: '💰 Start-Guthaben', value: `\`${hunt.startBalance.toFixed(2)}€\``, inline: true },
-            { name: '🎯 Gesamteinsatz', value: `\`${totalBet.toFixed(2)}€\``, inline: true },
+            { name: '🎯 Gesamt-Investiert', value: `\`${totalInvest.toFixed(2)}€\``, inline: true },
             { name: '🎰 Boni gesammelt', value: `\`${hunt.slots.length}\``, inline: true },
             { name: '🏆 Aktueller Win', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
             { name: '📈 Profit/Loss', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
@@ -224,7 +230,7 @@ async function syncUserRoles(userData, now = new Date()) {
 
 // --- EXPRESS / DASHBOARD SETUP ---
 const app = express();
-app.set('trust proxy', 1); // WICHTIG: Damit Railway die Session-Daten und Redirects nicht blockiert
+app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
@@ -272,7 +278,7 @@ app.get('/leaderboard/:guildId', async (req, res) => {
             monthlyLeaderboard: enrichedMonthly, 
             monthName: "Gesamtstatistik", 
             ranks,
-            loggedInUser: req.user 
+            loggedInUser: req.user
         });
     } catch (err) { 
         console.error(err);
@@ -280,22 +286,16 @@ app.get('/leaderboard/:guildId', async (req, res) => {
     }
 });
 
-// --- LOGIN ROUTEN UPDATE (State-Methode) ---
+// --- LOGIN ROUTEN ---
 app.get('/login', (req, res, next) => {
     let backURL = req.query.returnTo || req.headers.referer || '/';
-    
-    // Vermeide Redirect-Loops
     try {
-        if (backURL.startsWith('http')) {
-            backURL = new URL(backURL).pathname;
-        }
+        if (backURL.startsWith('http')) backURL = new URL(backURL).pathname;
     } catch (e) {}
 
     if (backURL.includes('/login')) backURL = '/';
 
-    // Wir kodieren das Ziel als Base64-String und schicken es als "state" direkt an Discord
     const stateString = Buffer.from(backURL).toString('base64');
-    
     passport.authenticate('discord', { state: stateString })(req, res, next);
 });
 
@@ -318,27 +318,14 @@ app.get('/auth/discord/callback',
         if (req.user) {
             log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
         }
-        
-        let redirectTo = '/dashboard'; // Standard-Ziel
-
-        // Wir lesen das Ziel wieder aus der Discord URL aus
+        let redirectTo = '/dashboard';
         if (req.query.state) {
             try {
                 const decodedState = Buffer.from(req.query.state, 'base64').toString('utf-8');
-                // Sicherheits-Check, ob es wirklich ein lokaler Pfad ist
-                if (decodedState && decodedState.startsWith('/')) {
-                    redirectTo = decodedState;
-                }
-            } catch(e) {
-                console.error("Konnte State nicht entschlüsseln:", e);
-            }
+                if (decodedState && decodedState.startsWith('/')) redirectTo = decodedState;
+            } catch(e) {}
         }
-        
-        // Wenn er von der Startseite kommt, ab ins Admin-Dashboard
-        if (redirectTo === '/') {
-            redirectTo = '/dashboard';
-        }
-        
+        if (redirectTo === '/') redirectTo = '/dashboard';
         res.redirect(redirectTo);
     }
 );
@@ -368,7 +355,6 @@ app.post('/bonushunt/start', async (req, res) => {
 
         const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance, threadId: thread.id });
         
-        // PING im Thread selbst!
         const summaryMsg = await thread.send({ 
             content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`, 
             embeds: [buildHuntEmbed(newHunt)] 
@@ -377,7 +363,6 @@ app.post('/bonushunt/start', async (req, res) => {
         newHunt.summaryMsgId = summaryMsg.id;
         await newHunt.save();
 
-        // PING im Main-Channel!
         await huntChannel.send(`🚨 <@${req.user.id}> hat gerade einen neuen **Bonus Hunt** mit \`${startBalance.toFixed(2)}€\` gestartet!\n👀 Verfolge das Spektakel live hier: <#${thread.id}>`);
 
         res.redirect('/bonushunt');
@@ -389,13 +374,13 @@ app.post('/bonushunt/start', async (req, res) => {
 
 app.post('/bonushunt/add', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login');
-    const { slotName, betSize } = req.body;
+    const { slotName, betSize, bonusValue } = req.body; // NEU: bonusValue
 
     try {
         const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
         if (!hunt) return res.redirect('/bonushunt');
 
-        hunt.slots.push({ name: slotName, bet: parseFloat(betSize) });
+        hunt.slots.push({ name: slotName, bet: parseFloat(betSize), value: parseFloat(bonusValue) });
         await hunt.save();
 
         const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
@@ -404,8 +389,7 @@ app.post('/bonushunt/add', async (req, res) => {
             const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
             if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
             
-            // Schickere Hinzufügen-Nachricht
-            await thread.send(`🎰 **Slot eingesammelt:** \`${slotName}\` (Einsatz: \`${parseFloat(betSize).toFixed(2)}€\`)`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
+            await thread.send(`🎰 **Slot eingesammelt:** \`${slotName}\` (Einsatz: \`${parseFloat(betSize).toFixed(2)}€\`, Wert: \`${parseFloat(bonusValue).toFixed(2)}€\`)`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
         }
 
         res.redirect('/bonushunt');
@@ -415,7 +399,8 @@ app.post('/bonushunt/add', async (req, res) => {
     }
 });
 
-app.post('/bonushunt/open/:slotId', async (req, res) => {
+// NEU: upload.single('screenshot') integriert für Bilder
+app.post('/bonushunt/open/:slotId', upload.single('screenshot'), async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login');
     const winAmount = parseFloat(req.body.winAmount);
 
@@ -427,22 +412,44 @@ app.post('/bonushunt/open/:slotId', async (req, res) => {
         if (slot) {
             slot.win = winAmount;
             slot.isOpened = true;
-            await hunt.save();
 
             const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
             const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
+            
             if (thread) {
-                const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
-                if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
-                
-                // Dynamische Emojis für fette Hits!
+                // Multiplikator wird auf Basis des Base-Bets berechnet
                 const multi = winAmount / slot.bet;
                 let emoji = '✅';
                 if (multi >= 100) emoji = '🔥';
                 if (multi >= 500) emoji = '🚀';
                 if (multi >= 1000) emoji = '🤯';
 
-                await thread.send(`${emoji} **${slot.name}** geöffnet! Gewinn: **${winAmount.toFixed(2)}€** \`(${multi.toFixed(2)}x)\``);
+                // Discord Message zusammenbauen
+                let messagePayload = { 
+                    content: `${emoji} **${slot.name}** geöffnet! Gewinn: **${winAmount.toFixed(2)}€** \`(${multi.toFixed(2)}x)\`` 
+                };
+
+                // Wenn der User ein Bild hochgeladen hat, fügen wir es an!
+                if (req.file) {
+                    const attachment = new AttachmentBuilder(req.file.buffer, { name: 'screenshot.png' });
+                    messagePayload.files = [attachment];
+                }
+
+                // Nachricht in Thread senden
+                const sentMsg = await thread.send(messagePayload);
+
+                // Wenn ein Bild hochgeladen wurde, lesen wir jetzt die Discord-URL aus und speichern sie
+                if (req.file && sentMsg.attachments.size > 0) {
+                    slot.imageUrl = sentMsg.attachments.first().url;
+                }
+
+                await hunt.save();
+
+                // Übersicht aktualisieren
+                const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
+                if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
+            } else {
+                await hunt.save();
             }
         }
         res.redirect('/bonushunt');
@@ -461,9 +468,9 @@ app.post('/bonushunt/finish', async (req, res) => {
         hunt.isActive = false;
         await hunt.save();
 
-        const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
+        const totalInvest = hunt.slots.reduce((acc, s) => acc + s.value, 0);
         const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
-        const profit = totalWin - totalBet;
+        const profit = totalWin - totalInvest;
 
         const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
         const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
@@ -472,7 +479,7 @@ app.post('/bonushunt/finish', async (req, res) => {
                 .setTitle(`🏁 Bonus Hunt Beendet!`)
                 .setDescription(`Die Walzen stehen still. Hier ist die Endabrechnung für <@${hunt.userId}>:`)
                 .addFields(
-                    { name: '🎯 Gesamteinsatz', value: `\`${totalBet.toFixed(2)}€\``, inline: true },
+                    { name: '🎯 Gesamt-Investiert', value: `\`${totalInvest.toFixed(2)}€\``, inline: true },
                     { name: '🏆 Gesamtgewinn', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
                     { name: profit >= 0 ? '📈 PROFIT' : '📉 LOSS', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
                 )
