@@ -295,6 +295,12 @@ app.get('/login', (req, res, next) => {
 });
 
 app.get('/logout', (req, res, next) => {
+    // Ziel aus der URL auslesen (z.B. ?returnTo=/bonushunt), ansonsten Startseite
+    let returnTo = req.query.returnTo || '/';
+    
+    // Sicherheitshalber prüfen, ob es ein gültiger lokaler Pfad ist
+    if (!returnTo.startsWith('/')) returnTo = '/';
+
     req.logout(function(err) {
         if (err) { 
             log(`❌ LOGOUT FEHLER: ${err.message}`);
@@ -302,7 +308,8 @@ app.get('/logout', (req, res, next) => {
         }
         req.session.destroy(() => {
             res.clearCookie('connect.sid'); 
-            res.redirect('/');
+            // Hier schicken wir den User ans gewünschte Ziel zurück!
+            res.redirect(returnTo); 
         });
     });
 });
@@ -1210,5 +1217,6 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
 
