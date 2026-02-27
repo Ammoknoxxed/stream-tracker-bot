@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonus Hunt Tracker | Juicer Bot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { 
+            --accent: #fbbf24; 
+            --bg-card: rgba(10, 10, 15, 0.85); 
+        }
+        body {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('/images/background.jpg');
+            background-attachment: fixed; background-position: center; background-size: cover;
+            color: white; font-family: 'Segoe UI', Roboto, sans-serif; min-height: 100vh; padding: 40px 20px;
+        }
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, var(--bg-card) 100%);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; 
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+        .form-control { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; }
+        .form-control:focus { background: rgba(0,0,0,0.8); border-color: var(--accent); color: white; box-shadow: 0 0 10px rgba(251, 191, 36, 0.2); }
+        
+        .btn-cyber { 
+            background: var(--accent); color: black; font-weight: bold; border-radius: 10px; transition: 0.3s; 
+            text-transform: uppercase; letter-spacing: 1px; border: none; padding: 10px 20px;
+        }
+        .btn-cyber:hover { transform: translateY(-2px); box-shadow: 0 0 15px var(--accent); background: white; color: black; }
+        
+        .table { color: white; --bs-table-bg: transparent; margin-bottom: 0; }
+        .table td, .table th { border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
+        .table thead th { color: var(--accent); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
+
+        .particles-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        .particle { position: absolute; background: var(--accent); border-radius: 50%; opacity: 0.2; filter: blur(2px); animation: floatUp 15s linear infinite; }
+        @keyframes floatUp {
+            0% { transform: translateY(110vh) translateX(0); opacity: 0; }
+            10% { opacity: 0.3; }
+            90% { opacity: 0.3; }
+            100% { transform: translateY(-20vh) translateX(100px); opacity: 0; }
+        }
+
+        /* Nav Dropdown für User */
+        .dropdown-menu-dark { background-color: rgba(20, 20, 30, 0.95); backdrop-filter: blur(10px); }
+        .dropdown-item:hover { background-color: rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body>
+
+<div class="particles-container" id="particles"></div>
+
+<div style="position: absolute; top: 20px; right: 20px; z-index: 1000;">
+    <% if (user) { %>
+        <div class="dropdown">
+            <button class="btn btn-outline-light btn-sm dropdown-toggle d-flex align-items-center" type="button" data-bs-toggle="dropdown" style="border-radius: 20px; background: rgba(0,0,0,0.5);">
+                <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" 
+                     width="24" height="24" class="rounded-circle me-2 border border-secondary" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                <span class="fw-bold"><%= user.username %></span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow-lg mt-2" style="border: 1px solid var(--accent); border-radius: 12px;">
+                <li><a class="dropdown-item py-2 text-danger fw-bold" href="/logout"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
+            </ul>
+        </div>
+    <% } else { %>
+        <a href="/login" class="btn btn-sm shadow-lg d-flex align-items-center" style="background: #5865F2; color: white; border-radius: 20px; font-weight: bold; padding: 8px 16px; border: 1px solid rgba(255,255,255,0.2); transition: 0.3s;">
+            <i class="fab fa-discord me-2 fs-5"></i> Login
+        </a>
+    <% } %>
+</div>
+
+<div class="container" style="max-width: 1000px;">
+    <div class="text-center mb-5">
+        <h1 class="display-5 fw-bold" style="color: var(--accent); text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);">
+            <i class="fas fa-crosshairs me-2"></i> BONUS HUNT
+        </h1>
+        <p class="opacity-75 text-uppercase" style="letter-spacing: 2px;">Live Discord Tracker</p>
+    </div>
+
+    <% if (!user) { %>
+        <div class="glass-card p-5 text-center mx-auto" style="max-width: 500px;">
+            <i class="fab fa-discord fa-4x mb-3 text-white-50"></i>
+            <h3 class="fw-bold">Login erforderlich</h3>
+            <p class="opacity-75 mb-4">Du musst dich anmelden, damit der Bot deinen eigenen Hunt deinem Discord-Profil zuordnen kann.</p>
+            <a href="/login" class="btn btn-cyber w-100 py-3"><i class="fab fa-discord me-2"></i> Mit Discord einloggen</a>
+        </div>
+
+    <% } else if (!hunt) { %>
+        <div class="glass-card p-5 text-center mx-auto" style="max-width: 500px;">
+            <i class="fas fa-play-circle fa-4x mb-3" style="color: var(--accent);"></i>
+            <h3 class="fw-bold">Neuen Hunt starten</h3>
+            <p class="opacity-75 small mb-4">Es wird automatisch ein neuer Thread im Discord erstellt, in dem deine Community live mitfiebern kann.</p>
+            
+            <form action="/bonushunt/start" method="POST">
+                <div class="mb-4 text-start">
+                    <label class="form-label text-accent fw-bold small text-uppercase">Start-Guthaben (€)</label>
+                    <input type="number" step="0.01" name="startBalance" class="form-control form-control-lg text-center fw-bold" placeholder="z.B. 500.00" required>
+                </div>
+                <button type="submit" class="btn btn-cyber w-100 py-3 fs-5"><i class="fas fa-rocket me-2"></i> Hunt Erstellen</button>
+            </form>
+        </div>
+
+    <% } else { %>
+        <% 
+            const totalBet = hunt.slots.reduce((acc, s) => acc + s.bet, 0);
+            const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
+            const profit = totalWin - totalBet;
+            const isProfit = profit >= 0;
+            const profitColor = isProfit ? '#2ecc71' : '#f43f5e';
+        %>
+        
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="glass-card p-4 text-center">
+                    <div class="small opacity-50 text-uppercase mb-1">Start Balance</div>
+                    <div class="fs-3 fw-bold text-white"><%= hunt.startBalance.toFixed(2) %>€</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="glass-card p-4 text-center" style="border-color: var(--accent); box-shadow: inset 0 0 15px rgba(251,191,36,0.1);">
+                    <div class="small opacity-50 text-uppercase mb-1" style="color: var(--accent);">Gesamteinsatz</div>
+                    <div class="fs-3 fw-bold" style="color: var(--accent);"><%= totalBet.toFixed(2) %>€</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="glass-card p-4 text-center">
+                    <div class="small opacity-50 text-uppercase mb-1">Aktueller Profit</div>
+                    <div class="fs-3 fw-bold" style="color: <%= profitColor %>;">
+                        <%= isProfit ? '+' : '' %><%= profit.toFixed(2) %>€
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="glass-card p-4 sticky-top" style="top: 20px;">
+                    <h5 class="mb-3 text-accent fw-bold"><i class="fas fa-plus-circle me-2"></i> Slot hinzufügen</h5>
+                    <form action="/bonushunt/add" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label small opacity-75">Slot Name</label>
+                            <input type="text" name="slotName" class="form-control bg-dark" placeholder="z.B. Gates of Olympus" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small opacity-75">Einsatz / Bet (€)</label>
+                            <input type="number" step="0.01" name="betSize" class="form-control bg-dark" placeholder="z.B. 2.00" required>
+                        </div>
+                        <button type="submit" class="btn btn-outline-warning w-100 mb-4 fw-bold">Hinzufügen</button>
+                    </form>
+
+                    <hr class="border-secondary mb-4">
+
+                    <form action="/bonushunt/finish" method="POST" onsubmit="return confirm('Sicher, dass du den Hunt beenden willst? Der Discord-Thread wird endgültig geschlossen!');">
+                        <button type="submit" class="btn btn-danger w-100 fw-bold py-2"><i class="fas fa-flag-checkered me-2"></i> Hunt beenden</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="glass-card p-4">
+                    <h5 class="mb-4 d-flex justify-content-between align-items-center">
+                        <span class="fw-bold"><i class="fas fa-list me-2 text-accent"></i> Gesammelte Boni</span>
+                        <span class="badge bg-secondary fs-6"><%= hunt.slots.length %> Slots</span>
+                    </h5>
+
+                    <% if (hunt.slots.length === 0) { %>
+                        <div class="text-center opacity-50 py-5">
+                            <i class="fas fa-box-open fa-3x mb-3"></i>
+                            <p>Du hast noch keine Slots gesammelt.</p>
+                        </div>
+                    <% } else { %>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Slot</th>
+                                        <th>Bet</th>
+                                        <th class="text-end">Ergebnis / Gewinn</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% hunt.slots.forEach((slot, index) => { %>
+                                        <tr>
+                                            <td class="opacity-50"><%= index + 1 %></td>
+                                            <td class="fw-bold text-white"><%= slot.name %></td>
+                                            <td class="text-accent"><%= slot.bet.toFixed(2) %>€</td>
+                                            <td class="text-end">
+                                                <% if (slot.isOpened) { %>
+                                                    <span style="color: #2ecc71; font-weight: bold; font-size: 1.1rem;"><%= slot.win.toFixed(2) %>€</span>
+                                                    <br>
+                                                    <span class="small opacity-50"><%= (slot.win / slot.bet).toFixed(2) %>x</span>
+                                                <% } else { %>
+                                                    <form action="/bonushunt/open/<%= slot._id %>" method="POST" class="d-flex justify-content-end gap-2">
+                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end" style="width: 100px; background: rgba(0,0,0,0.5);" placeholder="Win (€)" required>
+                                                        <button type="submit" class="btn btn-sm btn-success fw-bold px-3"><i class="fas fa-check"></i></button>
+                                                    </form>
+                                                <% } %>
+                                            </td>
+                                        </tr>
+                                    <% }) %>
+                                </tbody>
+                            </table>
+                        </div>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    <% } %>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Partikel-Effekt
+    const particlesContainer = document.getElementById('particles');
+    for (let i = 0; i < 20; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const size = Math.random() * 4 + 2 + 'px';
+        p.style.width = size; p.style.height = size;
+        p.style.left = Math.random() * 100 + 'vw';
+        p.style.animationDelay = Math.random() * 15 + 's';
+        p.style.animationDuration = Math.random() * 10 + 10 + 's';
+        particlesContainer.appendChild(p);
+    }
+</script>
+</body>
+</html>
