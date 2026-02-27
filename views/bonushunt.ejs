@@ -149,11 +149,11 @@
                         </div>
                         <div class="row g-2 mb-3">
                             <div class="col-6">
-                                <label class="form-label small opacity-75">Bet (€)</label>
+                                <label class="form-label small text-white fw-bold">Einsatz / Bet (€)</label>
                                 <input type="number" step="0.01" name="betSize" class="form-control bg-dark" placeholder="2.00" required>
                             </div>
                             <div class="col-6">
-                                <label class="form-label small text-accent">Wert (€)</label>
+                                <label class="form-label small text-accent fw-bold">Wert (€)</label>
                                 <input type="number" step="0.01" name="bonusValue" class="form-control bg-dark border-warning" placeholder="Kosten" required>
                             </div>
                         </div>
@@ -162,9 +162,15 @@
 
                     <hr class="border-secondary mb-4">
 
-                    <form action="/bonushunt/finish" method="POST" onsubmit="return confirm('Sicher, dass du den Hunt beenden willst? Der Discord-Thread wird endgültig geschlossen!');">
-                        <button type="submit" class="btn btn-danger w-100 fw-bold py-2"><i class="fas fa-flag-checkered me-2"></i> Hunt beenden</button>
-                    </form>
+                    <% if (hunt.slots.length < 2) { %>
+                        <button class="btn btn-secondary w-100 fw-bold py-2 opacity-50" disabled>
+                            <i class="fas fa-lock me-2"></i> Hunt beenden (Min. 2 Slots)
+                        </button>
+                    <% } else { %>
+                        <form action="/bonushunt/finish" method="POST" onsubmit="return confirm('Sicher, dass du den Hunt beenden willst? Der Discord-Thread wird endgültig geschlossen!');">
+                            <button type="submit" class="btn btn-danger w-100 fw-bold py-2"><i class="fas fa-flag-checkered me-2"></i> Hunt beenden</button>
+                        </form>
+                    <% } %>
                 </div>
             </div>
 
@@ -197,8 +203,8 @@
                                             <td class="opacity-50"><%= index + 1 %></td>
                                             <td class="fw-bold text-white"><%= slot.name %></td>
                                             <td>
-                                                <div class="small opacity-75"><%= slot.bet.toFixed(2) %>€ Bet</div>
-                                                <div class="text-accent fw-bold"><%= slot.value.toFixed(2) %>€ Wert</div>
+                                                <div class="small text-white mb-1"><i class="fas fa-coins text-white-50 me-1"></i> <%= slot.bet.toFixed(2) %>€ Bet</div>
+                                                <div class="text-accent fw-bold small"><i class="fas fa-gem text-warning me-1"></i> <%= slot.value.toFixed(2) %>€ Wert</div>
                                             </td>
                                             <td class="text-end">
                                                 <% if (slot.isOpened) { %>
@@ -220,9 +226,15 @@
                                                     </div>
                                                 <% } else { %>
                                                     <form action="/bonushunt/open/<%= slot._id %>" method="POST" enctype="multipart/form-data" class="d-flex justify-content-end gap-2 align-items-center">
-                                                        <input type="file" name="screenshot" accept="image/*" class="form-control form-control-sm bg-dark" style="width: 120px; font-size: 0.7rem;" title="Screenshot hochladen">
-                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end border-success" style="width: 90px; background: rgba(0,0,0,0.5);" placeholder="Win (€)" required>
-                                                        <button type="submit" class="btn btn-sm btn-success fw-bold"><i class="fas fa-check"></i></button>
+                                                        
+                                                        <label class="btn btn-sm btn-outline-secondary mb-0 d-flex align-items-center justify-content-center px-3" style="cursor: pointer; height: 31px; border-radius: 8px;" title="Screenshot hochladen">
+                                                            <i class="fas fa-camera"></i>
+                                                            <input type="file" name="screenshot" accept="image/*" style="display: none;" onchange="this.previousElementSibling.className = 'fas fa-check-circle text-success'; this.parentElement.classList.replace('btn-outline-secondary', 'btn-outline-success');">
+                                                        </label>
+
+                                                        <input type="number" step="0.01" name="winAmount" class="form-control form-control-sm text-end border-success text-white fw-bold" style="width: 100px; background: rgba(0,0,0,0.5); height: 31px;" placeholder="Win (€)" required>
+                                                        
+                                                        <button type="submit" class="btn btn-sm btn-success fw-bold px-3" style="height: 31px;"><i class="fas fa-check"></i></button>
                                                     </form>
                                                 <% } %>
                                             </td>
