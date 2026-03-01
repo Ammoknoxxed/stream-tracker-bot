@@ -308,7 +308,7 @@ app.get('/logout', (req, res, next) => {
         }
         req.session.destroy(() => {
             res.clearCookie('connect.sid'); 
-            // Hier schicken wir den User ans gewünschte Ziel zurück!
+            // HUser zurück schicken
             res.redirect(returnTo); 
         });
     });
@@ -529,7 +529,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
 });
 
 app.get('/roadmap', (req, res) => {
-    // Hier definieren wir die Roadmap-Einträge
+    // Roadmap-Einträge
     const projects = [
         { 
             title: "Live Bonus Hunt Tracker", 
@@ -563,7 +563,6 @@ app.get('/roadmap', (req, res) => {
         }
     ]; 
 
-    // Wir holen uns die ID des Servers, damit der "Zurück zum Leaderboard" Button funktioniert
     const firstGuild = client.guilds.cache.first();
     const guildInfo = firstGuild ? { name: firstGuild.name, id: firstGuild.id } : { name: "JUICER BOT", id: "0" };
 
@@ -1139,7 +1138,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// --- AUTOMATISCHES INTERVALL ---
+// --- AUTOMATISCHER INTERVALL ---
 setInterval(async () => {
     const now = new Date();
     const allUsers = await StreamUser.find({});
@@ -1253,12 +1252,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
-
-
-
-
-
-
-
-
