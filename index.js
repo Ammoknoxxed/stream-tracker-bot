@@ -82,7 +82,7 @@ const slotEntrySchema = new mongoose.Schema({
     name: String,
     bet: Number,
     value: { type: Number, default: 0 }, 
-    currentBalance: { type: Number, default: 0 }, // NEU: Balance Feld
+    currentBalance: { type: Number, default: 0 }, 
     win: { type: Number, default: 0 },
     isOpened: { type: Boolean, default: false },
     imageUrl: { type: String, default: null } 
@@ -99,6 +99,23 @@ const bonusHuntSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 const BonusHunt = mongoose.model('BonusHunt', bonusHuntSchema);
+
+// --- 1.6 SERVER LOGS MODELL (NEU FÜR BIG BROTHER) ---
+const logSchema = new mongoose.Schema({
+    action: String,       
+    username: String,     
+    userId: String,       
+    details: String,      
+    channel: String,      
+    timestamp: { type: Date, default: Date.now }
+});
+const ServerLog = mongoose.model('ServerLog', logSchema);
+
+async function saveLog(action, username, userId, details, channel = 'System') {
+    try {
+        await ServerLog.create({ action, username, userId, details, channel });
+    } catch (e) { console.error("Log Error:", e); }
+}
 
 function buildHuntEmbed(hunt) {
     const lastBal = hunt.slots.length > 0 ? hunt.slots[hunt.slots.length - 1].currentBalance : hunt.startBalance;
@@ -129,7 +146,7 @@ function buildHuntEmbed(hunt) {
         .setTimestamp();
 }
 
-// --- 2. BOT SETUP ---
+// --- 2. BOT SETUP (ANGEPASST MIT ALLEN INTENTS) ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -137,9 +154,11 @@ const client = new Client({
         GatewayIntentBits.GuildMembers, 
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessages
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildModeration // NEU: Für Bans und Timeouts
     ],
-    partials: [Partials.GuildMember, Partials.User, Partials.Presence]
+    // NEU: Partials für gelöschte Nachrichten hinzugefügt
+    partials: [Partials.GuildMember, Partials.User, Partials.Presence, Partials.Message, Partials.Channel] 
 });
 
 function getSortedUsers(users, sortKey = 'effectiveTotal') {
@@ -295,10 +314,7 @@ app.get('/login', (req, res, next) => {
 });
 
 app.get('/logout', (req, res, next) => {
-    // Ziel aus der URL auslesen (z.B. ?returnTo=/bonushunt), ansonsten Startseite
     let returnTo = req.query.returnTo || '/';
-    
-    // Sicherheitshalber prüfen, ob es ein gültiger lokaler Pfad ist
     if (!returnTo.startsWith('/')) returnTo = '/';
 
     req.logout(function(err) {
@@ -308,7 +324,6 @@ app.get('/logout', (req, res, next) => {
         }
         req.session.destroy(() => {
             res.clearCookie('connect.sid'); 
-            // HUser zurück schicken
             res.redirect(returnTo); 
         });
     });
@@ -349,12 +364,10 @@ app.post('/bonushunt/start', async (req, res) => {
         const huntChannel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
         if (!huntChannel) return res.status(500).send("Discord Channel nicht gefunden.");
 
-        // Das Hunt-Objekt erstellen, damit wir das erste Embed direkt bauen können
         const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance });
 
-        // FORUM-LOGIK: Wir erstellen den Post und senden die erste Nachricht GANZ GLEICHZEITIG
         const forumPost = await huntChannel.threads.create({
-            name: `🎰 Hunt: ${req.user.username} | ${startBalance}€`, // Titel des Forum-Posts
+            name: `🎰 Hunt: ${req.user.username} | ${startBalance}€`, 
             autoArchiveDuration: 1440,
             message: {
                 content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`,
@@ -363,7 +376,6 @@ app.post('/bonushunt/start', async (req, res) => {
             reason: 'Neuer Bonus Hunt gestartet'
         });
         
-        // GANZ WICHTIG BEI FORUMS: Die ID der Start-Nachricht ist IMMER identisch mit der Thread-ID!
         newHunt.threadId = forumPost.id;
         newHunt.summaryMsgId = forumPost.id; 
         
@@ -508,6 +520,18 @@ app.get('/dashboard', async (req, res) => {
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
+// --- NEU: SERVER LOGS ROUTE ---
+app.get('/logs', async (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/login');
+    // Admin Check
+    const isAdmin = req.user.guilds.some(g => (g.permissions & 0x8) === 0x8);
+    if (!isAdmin) return res.status(403).send("⛔ Zugriff verweigert. Nur für Administratoren.");
+
+    // Hole die letzten 500 Logs aus der DB
+    const logs = await ServerLog.find().sort({ timestamp: -1 }).limit(500);
+    res.render('logs', { user: req.user, logs });
+});
+
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const guild = client.guilds.cache.get(req.params.guildId);
@@ -531,38 +555,12 @@ app.get('/dashboard/:guildId', async (req, res) => {
 });
 
 app.get('/roadmap', (req, res) => {
-    // Roadmap-Einträge
     const projects = [
-        { 
-            title: "Live Bonus Hunt Tracker", 
-            desc: "Interaktives Web-Dashboard zum Eintragen von Slots inkl. Live-Übertragung der Stats in den Discord-Thread.", 
-            status: "Fertig", 
-            progress: 100 
-        },
-        { 
-            title: "Automatisches Monats-Leaderboard", 
-            desc: "Fairer Wettkampf! Jeden 1. des Monats werden die Monats-Zeiten automatisch genullt, während die All-Time Stats bleiben.", 
-            status: "Fertig", 
-            progress: 100 
-        },
-        { 
-            title: "Zuschauer-Tippspiel (Guess the Win)", 
-            desc: "Ein neues Feature für den Discord, bei dem die Community tippen kann, wie viel Profit ein Bonus Hunt abwirft.", 
-            status: "Thinktank", 
-            progress: 361 
-        },
-        { 
-            title: "Erweiterte User-Profile", 
-            desc: "Eigene Profil-Seiten mit grafischen Auswertungen, Win/Loss-Ratios und den besten Hits des Monats.", 
-            status: "Geplant", 
-            progress: 50 
-        },
-        { 
-            title: "KI Stream Erkennung", 
-            desc: "The Bot is watching you.", 
-            status: "Geplant", 
-            progress: 15 
-        }
+        { title: "Live Bonus Hunt Tracker", desc: "Interaktives Web-Dashboard.", status: "Fertig", progress: 100 },
+        { title: "Automatisches Monats-Leaderboard", desc: "Fairer Wettkampf!", status: "Fertig", progress: 100 },
+        { title: "Zuschauer-Tippspiel (Guess the Win)", desc: "Community tippt.", status: "Thinktank", progress: 361 },
+        { title: "Erweiterte User-Profile", desc: "Eigene Profil-Seiten.", status: "Geplant", progress: 50 },
+        { title: "KI Stream Erkennung", desc: "The Bot is watching you.", status: "Geplant", progress: 15 }
     ]; 
 
     const firstGuild = client.guilds.cache.first();
@@ -687,7 +685,6 @@ client.on('messageCreate', async (message) => {
     const args = message.content.split(' ');
     const command = args[0].toLowerCase();
 
-    // 1. VOICE KICK (!kick @User Grund)
     if (command === '!kick') {
         if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
             return message.reply("⛔ Du hast keine Berechtigung, um Leute zu kicken.");
@@ -722,7 +719,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // 2. WARNINGS PRÜFEN (!warnings @User)
     if (command === '!warnings') {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
@@ -746,7 +742,6 @@ client.on('messageCreate', async (message) => {
         return message.reply({ embeds: [embed] });
     }
 
-    // 3. WARNUNG GEBEN (!warn @User Grund)
     if (command === '!warn') {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return message.reply("⛔ Du hast keine Berechtigung zu verwarnen.");
         
@@ -804,7 +799,6 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Alle **${result.deletedCount}** Verwarnungen von **${targetUser.user.username}** wurden unwiderruflich gelöscht.`);
     }
 
-    // 4. STREAM PREVIEW CHECK (!check @User)
     if (command === '!check') {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
@@ -839,7 +833,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 5. ZEIT ANPASSEN (!addtime, !removetime, !resettime)
     if (['!addtime', '!removetime', '!resettime'].includes(command)) {
         if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return message.reply("⛔ Du hast keine Berechtigung für diesen Command.");
@@ -895,7 +888,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 6. MEHREREN USERN GLEICHZEITIG ZEIT GEBEN (!addtimeall)
     if (command === '!addtimeall') {
         if (message.channel.id !== TIME_MOD_CHANNEL_ID) return;
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
@@ -1321,6 +1313,66 @@ client.once('ready', async () => {
     }, 5000); 
 });
 
+// ==========================================
+// 👁️ BIG BROTHER - SERVER LOGGING EVENTS
+// ==========================================
+
+// Auto-Löschung der Logs nach 14 Tagen, damit die DB nicht platzt
+setInterval(async () => {
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    await ServerLog.deleteMany({ timestamp: { $lt: fourteenDaysAgo } });
+}, 24 * 60 * 60 * 1000);
+
+// 1. NACHRICHTEN
+client.on('messageDelete', async (message) => {
+    if (message.partial || message.author?.bot) return;
+    saveLog('MSG_DELETE', message.author.username, message.author.id, `Nachricht gelöscht:\n"${message.content}"`, message.channel.name);
+});
+client.on('messageUpdate', async (oldMsg, newMsg) => {
+    if (oldMsg.partial || oldMsg.author?.bot || oldMsg.content === newMsg.content) return;
+    saveLog('MSG_EDIT', oldMsg.author.username, oldMsg.author.id, `Alt: "${oldMsg.content}"\nNeu: "${newMsg.content}"`, oldMsg.channel.name);
+});
+
+// 2. VOICE & STREAM LOGS (Dieser Listener stört das bestehende Stream-Tracking nicht)
+client.on('voiceStateUpdate', (oldState, newState) => {
+    if (newState.member?.user?.bot) return;
+    const user = newState.member.user;
+
+    if (!oldState.channelId && newState.channelId) saveLog('VOICE_JOIN', user.username, user.id, `Beigetreten`, newState.channel.name);
+    else if (oldState.channelId && !newState.channelId) saveLog('VOICE_LEAVE', user.username, user.id, `Verlassen`, oldState.channel.name);
+    else if (oldState.channelId !== newState.channelId) saveLog('VOICE_MOVE', user.username, user.id, `Gewechselt von #${oldState.channel.name}`, newState.channel.name);
+
+    if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Bildschirmübertragung (Stream) gestartet`, newState.channel.name);
+    else if (oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Bildschirmübertragung beendet`, newState.channel.name);
+    if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Kamera eingeschaltet`, newState.channel.name);
+
+    if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newState.channel.name);
+    if (!oldState.selfDeaf && newState.selfDeaf) saveLog('VOICE_DEAF', user.username, user.id, `Taub gestellt`, newState.channel.name);
+    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Admin gemutet`, newState.channel.name);
+});
+
+// 3. USER JOINS / LEAVES / UPDATES
+client.on('guildMemberAdd', (member) => saveLog('USER_JOIN', member.user.username, member.user.id, `Dem Server beigetreten. Account erstellt am: ${member.user.createdAt.toLocaleDateString('de-DE')}`));
+client.on('guildMemberRemove', (member) => saveLog('USER_LEAVE', member.user.username, member.user.id, `Hat den Server verlassen / Wurde gekickt.`));
+
+client.on('guildMemberUpdate', (oldMember, newMember) => {
+    if (oldMember.roles.cache.size < newMember.roles.cache.size) {
+        const addedRole = newMember.roles.cache.find(role => !oldMember.roles.cache.has(role.id));
+        if (addedRole) saveLog('ROLE_ADD', newMember.user.username, newMember.user.id, `Rolle erhalten: ${addedRole.name}`);
+    } else if (oldMember.roles.cache.size > newMember.roles.cache.size) {
+        const removedRole = oldMember.roles.cache.find(role => !newMember.roles.cache.has(role.id));
+        if (removedRole) saveLog('ROLE_REMOVE', newMember.user.username, newMember.user.id, `Rolle entfernt: ${removedRole.name}`);
+    }
+    if (oldMember.nickname !== newMember.nickname) saveLog('USER_NICKNAME', newMember.user.username, newMember.user.id, `Nickname geändert:\nAlt: ${oldMember.nickname || 'Keiner'}\nNeu: ${newMember.nickname || 'Keiner'}`);
+    if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) saveLog('USER_TIMEOUT', newMember.user.username, newMember.user.id, `Wurde in den Timeout geschickt bis: ${newMember.communicationDisabledUntil.toLocaleString('de-DE')}`);
+});
+
+// 4. BANS & KANÄLE
+client.on('guildBanAdd', (ban) => saveLog('USER_BAN', ban.user.username, ban.user.id, `Wurde gebannt. Grund: ${ban.reason || 'Kein Grund angegeben'}`));
+client.on('guildBanRemove', (ban) => saveLog('USER_UNBAN', ban.user.username, ban.user.id, `Wurde entbannt.`));
+client.on('channelCreate', (channel) => saveLog('CHANNEL_CREATE', 'System', 'N/A', `Neuer Kanal erstellt: ${channel.name} (${channel.type})`));
+client.on('channelDelete', (channel) => saveLog('CHANNEL_DELETE', 'System', 'N/A', `Kanal gelöscht: ${channel.name}`));
+
 mongoose.connect(process.env.MONGO_URI)
     .then(() => log('✅ MongoDB verbunden'))
     .catch(err => log(`❌ MongoDB Fehler: ${err.message}`));
@@ -1331,6 +1383,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
-
-
