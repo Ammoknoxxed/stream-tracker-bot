@@ -79,7 +79,7 @@
 
         /* --- TYPOGRAFIE & DETAILS --- */
         .username-bright { color: #ffffff !important; font-weight: 700; font-size: 1rem; text-shadow: 0 0 10px rgba(255,255,255,0.3); }
-        .time-text { font-size: 0.85rem; font-weight: 700; color: #e2e8f0; white-space: nowrap; font-family: monospace; }
+        .time-text { font-size: 0.9rem; font-weight: bold; color: #ffffff; white-space: nowrap; font-family: 'Consolas', monospace; text-shadow: 1px 1px 5px rgba(0,0,0,1); }
         
         .details-text { 
             font-size: 0.85rem; background: rgba(0,0,0,0.5); padding: 12px 15px; border-radius: 8px; margin: 0; 
@@ -184,7 +184,7 @@
                     <tr>
                         <th class="ps-4" style="width: 15%"><i class="far fa-clock me-1"></i> Zeit</th>
                         <th style="width: 15%"><i class="fas fa-bolt me-1"></i> Aktion</th>
-                        <th style="width: 20%"><i class="fas fa-user-circle me-1"></i> Subjekt</th>
+                        <th style="width: 20%"><i class="fas fa-user-circle me-1"></i> User</th>
                         <th style="width: 40%"><i class="fas fa-terminal me-1"></i> Log Details</th>
                         <th class="pe-4 text-end" style="width: 10%"><i class="fas fa-map-marker-alt me-1"></i> Ort</th>
                     </tr>
@@ -212,7 +212,7 @@
                         <td><span class="badge-action <%= badgeClass %>"><%= log.action.replace(/_/g, ' ') %></span></td>
                         <td>
                             <div class="username-bright"><%= log.username %></div>
-                            <div class="opacity-50 mt-1" style="font-family: monospace; font-size: 0.75rem;">ID: <%= log.userId %></div>
+                            <div class="mt-1" style="font-family: 'Consolas', monospace; font-size: 0.85rem; color: var(--accent-dark); font-weight: 600;">ID: <span style="color: #ffffff;"><%= log.userId %></span></div>
                         </td>
                         <td><div class="details-text"><%= log.details %></div></td>
                         <td class="pe-4 text-end small" style="color: var(--accent); font-weight: 600;"><%= log.channel !== 'System' ? '#' + log.channel : 'SERVER' %></td>
