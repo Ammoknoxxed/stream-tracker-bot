@@ -133,7 +133,7 @@
                     let searchString = `${log.action} ${log.username} ${log.userId} ${log.details} ${log.channel}`.toLowerCase();
                 %>
                 <tr class="log-row" data-type="<%= filterType %>" data-search="<%= searchString %>">
-                    <td class="small opacity-75 align-middle"><%= time %></td>
+                    <td class="small text-white fw-bold align-middle" style="white-space: nowrap; letter-spacing: 0.5px;"><%= time %></td>
                     <td class="align-middle"><span class="badge-action <%= badgeClass %>"><%= log.action.replace(/_/g, ' ') %></span></td>
                     <td class="align-middle">
                         <span class="fw-bold" style="color: #fff; font-size: 1rem;"><%= log.username %></span><br>
