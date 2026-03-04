@@ -109,10 +109,21 @@
         </div>
 
     <% } else if (!hunt) { %>
-        <div class="glass-card p-5 text-center mx-auto" style="max-width: 500px;">
-            <i class="fas fa-play-circle fa-4x mb-3" style="color: var(--accent);"></i>
-            <h3 class="fw-bold">Neuen Hunt starten</h3>
-            <p class="opacity-75 small mb-4">WIE VIEL IST DAS</p>
+        <div class="glass-card p-4 text-center mx-auto" style="max-width: 600px;">
+            <i class="fas fa-play-circle fa-3x mb-2" style="color: var(--accent);"></i>
+            <h3 class="fw-bold mb-3">Neuen Hunt starten</h3>
+            
+            <div style="background: rgba(255, 204, 0, 0.1); border-left: 4px solid #ffcc00; padding: 15px; margin: 15px 0 25px 0; text-align: left; border-radius: 4px;">
+                <p style="color: #ffcc00; font-weight: bold; margin-top: 0; margin-bottom: 10px; font-size: 14px; text-transform: uppercase;">
+                    ⚠️ Wichtig: Erstelle nur einen Hunt, wenn du ihn auch durchziehst!
+                </p>
+                <ul style="color: #ccc; font-size: 13px; margin: 0; padding-left: 20px; line-height: 1.6;">
+                    <li><strong>Budget setzen:</strong> Trage dein festes Startkapital ein.</li>
+                    <li><strong>Boni sammeln:</strong> Freispiele triggern, aber <b>nicht spielen</b> (Slot sofort schließen!).</li>
+                    <li><strong>Wiederholen:</strong> Weitersammeln, bis das Startkapital auf 0€ ist.</li>
+                    <li><strong>Das Opening:</strong> Am Ende alle gesammelten Boni öffnen und Profit checken!</li>
+                </ul>
+            </div>
             
             <form action="/bonushunt/start" method="POST">
                 <div class="mb-4 text-start">
