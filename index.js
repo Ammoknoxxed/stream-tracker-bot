@@ -522,7 +522,7 @@ app.get('/dashboard', async (req, res) => {
 
 // --- NEU: SERVER LOGS ROUTE ---
 app.get('/logs', async (req, res) => {
-    if (!req.isAuthenticated()) return res.redirect('/login');
+    if (!req.isAuthenticated()) return res.redirect('/login?returnTo=/logs');
     // Admin Check
     const isAdmin = req.user.guilds.some(g => (g.permissions & 0x8) === 0x8);
     if (!isAdmin) return res.status(403).send("⛔ Zugriff verweigert. Nur für Administratoren.");
@@ -1383,5 +1383,6 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
 
