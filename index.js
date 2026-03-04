@@ -45,7 +45,7 @@ const VERIFY_MOD_CHANNEL_ID = '1473125691058032830';
 const TIME_MOD_CHANNEL_ID = '1021086309860782191';   
 const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; 
 const BAN_ROLE_ID = '1476589330301714482';
-const BONUS_HUNT_CHANNEL_ID = '1476889019303591936';
+const BONUS_HUNT_CHANNEL_ID = '1478547866204110868';
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -349,28 +349,30 @@ app.post('/bonushunt/start', async (req, res) => {
         const huntChannel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
         if (!huntChannel) return res.status(500).send("Discord Channel nicht gefunden.");
 
-        const thread = await huntChannel.threads.create({
-            name: `🎰 Hunt: ${req.user.username}`,
+        // Das Hunt-Objekt erstellen, damit wir das erste Embed direkt bauen können
+        const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance });
+
+        // FORUM-LOGIK: Wir erstellen den Post und senden die erste Nachricht GANZ GLEICHZEITIG
+        const forumPost = await huntChannel.threads.create({
+            name: `🎰 Hunt: ${req.user.username} | ${startBalance}€`, // Titel des Forum-Posts
             autoArchiveDuration: 1440,
+            message: {
+                content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`,
+                embeds: [buildHuntEmbed(newHunt)]
+            },
             reason: 'Neuer Bonus Hunt gestartet'
         });
-
-        const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance, threadId: thread.id });
         
-        const summaryMsg = await thread.send({ 
-            content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`, 
-            embeds: [buildHuntEmbed(newHunt)] 
-        });
+        // GANZ WICHTIG BEI FORUMS: Die ID der Start-Nachricht ist IMMER identisch mit der Thread-ID!
+        newHunt.threadId = forumPost.id;
+        newHunt.summaryMsgId = forumPost.id; 
         
-        newHunt.summaryMsgId = summaryMsg.id;
         await newHunt.save();
-
-        await huntChannel.send(`🚨 <@${req.user.id}> hat gerade einen neuen **Bonus Hunt** mit \`${startBalance.toFixed(2)}€\` gestartet!\n👀 Verfolge den Hunt LIVE hier: <#${thread.id}>`);
 
         res.redirect('/bonushunt');
     } catch (err) {
         console.error(err);
-        res.status(500).send("Fehler beim Starten.");
+        res.status(500).send("Fehler beim Starten des Forum-Posts.");
     }
 });
 
@@ -1329,5 +1331,6 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
 
 
