@@ -356,8 +356,12 @@ const formatFullTime = (totalMins) => {
     return hours > 0 ? `${hours} Std. ${mins} Min.` : `${mins} Min.`;
 };
 
-function renderLeaderboard(userList, timeKey, tableId) { %>
-    <% if(userList.length >= 1) { %>
+// --- HIER IST DIE ANGEPASSTE RENDER-FUNKTION ---
+// Wir haben "showRanks" hinzugefügt. Standard ist "true" (wie beim All-Time), 
+// beim Monthly wird es auf "false" gesetzt.
+function renderLeaderboard(userList, timeKey, tableId, showRanks = true) { %>
+    
+    <% if(userList.length >= 1 && showRanks) { %>
     <div class="top-three">
         <% userList.slice(0, 3).forEach((user, index) => { 
             const info = getRankInfo(user[timeKey]);
@@ -421,20 +425,26 @@ function renderLeaderboard(userList, timeKey, tableId) { %>
                 <thead class="sticky-thead bg-black">
                     <tr>
                         <th class="ps-4 py-3">#</th>
-                        <th>User & Rang</th>
+                        <th>User <%= showRanks ? '& Rang' : '' %></th>
                         <th class="text-end pe-4">Zeit</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <% userList.slice(3).forEach((user, index) => { 
+                    <% 
+                    // Wenn keine Ränge gezeigt werden (Monthly), fangen wir direkt bei Index 0 an, nicht bei 3!
+                    const listToMap = showRanks ? userList.slice(3) : userList;
+                    
+                    listToMap.forEach((user, idx) => { 
+                        // Der tatsächliche Platz:
+                        const displayIndex = showRanks ? idx + 4 : idx + 1;
                         const info = getRankInfo(user[timeKey]);
                     %>
                     <tr class="border-bottom border-white border-opacity-10" 
                         data-bs-toggle="tooltip" 
                         data-bs-placement="right"
-                        data-bs-title="<%= info.next ? info.progress + '% geschafft! Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis ' + info.next.name : 'Höchster Rang erreicht!' %>">
+                        data-bs-title="<%= (showRanks && info.next) ? info.progress + '% geschafft! Noch ' + formatFullTime(info.next.min - user[timeKey]) + ' bis ' + info.next.name : (showRanks ? 'Höchster Rang erreicht!' : '') %>">
                         
-                        <td class="ps-4 opacity-50">#<%= index + 4 %></td>
+                        <td class="ps-4 opacity-50">#<%= displayIndex %></td>
                         
                         <td class="d-flex align-items-center py-3">
                             <img src="<%= user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' %>" 
@@ -452,6 +462,7 @@ function renderLeaderboard(userList, timeKey, tableId) { %>
                                     <% } %>
                                 </div>
 
+                                <% if(showRanks) { %>
                                 <div class="d-flex align-items-center mt-1">
                                     <img src="/images/ranks/<%= info.current.img %>" class="rank-icon-list">
                                     <div class="w-100">
@@ -470,6 +481,7 @@ function renderLeaderboard(userList, timeKey, tableId) { %>
                                         <% } %>
                                     </div>
                                 </div>
+                                <% } %>
                             </div>
                         </td>
 
@@ -526,7 +538,7 @@ function renderLeaderboard(userList, timeKey, tableId) { %>
             </div>
         <% } else { %>
             <% if(typeof monthlyLeaderboard !== 'undefined' && monthlyLeaderboard.length > 0) { %>
-                <% renderLeaderboard(monthlyLeaderboard, 'effectiveMonthly', 'table-monthly'); %>
+                <% renderLeaderboard(monthlyLeaderboard, 'effectiveMonthly', 'table-monthly', false); %>
             <% } else { %>
                 <div class="glass-card p-5 text-center mt-4">
                     <i class="fas fa-calendar-times text-muted mb-3" style="font-size: 3rem;"></i>
