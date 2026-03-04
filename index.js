@@ -19,25 +19,25 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // --- 0. KONFIGURATION YEE ---
 const ranks = [
-    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff" },
-    { min: 45000, name: "Casino Imperator", color: "#ff4500" },
-    { min: 30000, name: "Jackpot Legende", color: "#f1c40f" },
-    { min: 20000, name: "Haus Elite", color: "#d35400" },
-    { min: 15000, name: "Zucker Baron", color: "#e91e63" },
-    { min: 10000, name: "High Roller", color: "#8e44ad" },
-    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff" },
-    { min: 5000,  name: "Multi König", color: "#1a5276" },
-    { min: 3500,  name: "Scatter Profi", color: "#2980b9" },
-    { min: 2500,  name: "Bonus Shopper", color: "#3498db" },
-    { min: 1800,  name: "Risiko Experte", color: "#145a32" },
-    { min: 1200,  name: "Big Gambler", color: "#1f8b4c" },
-    { min: 800,   name: "Rejuicer", color: "#1db954" },
-    { min: 500,   name: "Bonus Magnet", color: "#2ecc71" },
-    { min: 300,   name: "Stammgast", color: "#e5e4e2" },
-    { min: 150,   name: "Dauerdreher", color: "#dcddde" },
-    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d" },
-    { min: 20,    name: "Glücksjäger", color: "#bdc3c7" },
-    { min: 0,     name: "Casino Gast", color: "#95a5a6" }
+    { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
+    { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
+    { min: 30000, name: "Jackpot Legende", color: "#f1c40f", img: "17.png" },
+    { min: 20000, name: "Haus Elite", color: "#d35400", img: "16.png" },
+    { min: 15000, name: "Zucker Baron", color: "#e91e63", img: "15.png" },
+    { min: 10000, name: "High Roller", color: "#8e44ad", img: "14.png" },
+    { min: 7500,  name: "Vollbild Jäger", color: "#00d2ff", img: "13.png" },
+    { min: 5000,  name: "Multi König", color: "#1a5276", img: "12.png" },
+    { min: 3500,  name: "Scatter Profi", color: "#2980b9", img: "11.png" },
+    { min: 2500,  name: "Bonus Shopper", color: "#3498db", img: "10.png" },
+    { min: 1800,  name: "Risiko Experte", color: "#145a32", img: "9.png" },
+    { min: 1200,  name: "Big Gambler", color: "#1f8b4c", img: "8.png" },
+    { min: 800,   name: "Rejuicer", color: "#1db954", img: "7.png" },
+    { min: 500,   name: "Bonus Magnet", color: "#2ecc71", img: "6.png" },
+    { min: 300,   name: "Stammgast", color: "#e5e4e2", img: "5.png" },
+    { min: 150,   name: "Dauerdreher", color: "#dcddde", img: "4.png" },
+    { min: 60,    name: "Walzen Flüsterer", color: "#7f8c8d", img: "3.png" },
+    { min: 20,    name: "Glücksjäger", color: "#bdc3c7", img: "2.png" },
+    { min: 0,     name: "Casino Gast", color: "#95a5a6", img: "1.png" }
 ];
 
 const VERIFY_CHANNEL_ID = '1459882167848145073';     
@@ -117,7 +117,20 @@ async function saveLog(action, username, userId, details, channel = 'System') {
     } catch (e) { console.error("Log Error:", e); }
 }
 
-function buildHuntEmbed(hunt) {
+// --- HELPER FÜR BONUS HUNT EMBED ---
+async function getHuntUserData(userId, reqUser) {
+    const userData = await StreamUser.findOne({ userId });
+    let rank = null;
+    if (userData && userData.totalMinutes > 0) {
+        rank = ranks.find(r => userData.totalMinutes >= r.min) || ranks[ranks.length - 1];
+    }
+    const avatarUrl = reqUser.avatar 
+        ? `https://cdn.discordapp.com/avatars/${userId}/${reqUser.avatar}.png` 
+        : 'https://cdn.discordapp.com/embed/avatars/0.png';
+    return { rank, avatarUrl };
+}
+
+function buildHuntEmbed(hunt, avatarUrl = null, rankColor = null) {
     const lastBal = hunt.slots.length > 0 ? hunt.slots[hunt.slots.length - 1].currentBalance : hunt.startBalance;
     const totalInvest = hunt.startBalance - lastBal; 
     const totalWert = hunt.slots.reduce((acc, s) => acc + s.value, 0); 
@@ -131,7 +144,7 @@ function buildHuntEmbed(hunt) {
     
     if (!slotList) slotList = "Noch keine Slots gesammelt. Sammel fleißig! 🍀";
 
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setTitle(`🎰 Live Bonus Hunt: ${hunt.username}`)
         .setDescription(`${slotList}`)
         .addFields(
@@ -141,9 +154,15 @@ function buildHuntEmbed(hunt) {
             { name: '🏆 Gewinn', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
             { name: '📈 Netto-Profit', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
         )
-        .setColor('#fbbf24')
+        .setColor(rankColor || '#fbbf24')
         .setFooter({ text: 'Juicer Bonus Hunt Tracker • Live Updates' })
         .setTimestamp();
+
+    if (avatarUrl) {
+        embed.setThumbnail(avatarUrl);
+    }
+
+    return embed;
 }
 
 // --- 2. BOT SETUP (ANGEPASST MIT ALLEN INTENTS) ---
@@ -366,13 +385,25 @@ app.post('/bonushunt/start', async (req, res) => {
 
         const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance });
 
+        // User Daten fetchen für Profilbild und Rangbild
+        const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
+        const startEmbed = buildHuntEmbed(newHunt, avatarUrl, rank ? rank.color : null);
+
+        let messagePayload = {
+            content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`,
+            embeds: [startEmbed]
+        };
+
+        // Rangbild als Datei anhängen für die Forum-Thumbnail-Preview
+        if (rank && rank.img) {
+            const rankImagePath = path.join(__dirname, 'public', 'images', 'ranks', rank.img);
+            messagePayload.files = [new AttachmentBuilder(rankImagePath, { name: 'rankpreview.png' })];
+        }
+
         const forumPost = await huntChannel.threads.create({
             name: `🎰 Hunt: ${req.user.username} | ${startBalance}€`, 
             autoArchiveDuration: 1440,
-            message: {
-                content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`,
-                embeds: [buildHuntEmbed(newHunt)]
-            },
+            message: messagePayload,
             reason: 'Neuer Bonus Hunt gestartet'
         });
         
@@ -407,8 +438,10 @@ app.post('/bonushunt/add', async (req, res) => {
         const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
         const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
         if (thread) {
+            const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
             const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
-            if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
+            
+            if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt, avatarUrl, rank ? rank.color : null)] });
             
             await thread.send(`🎰 **Slot eingesammelt:** \`${slotName}\` (Einsatz: \`${parseFloat(betSize).toFixed(2)}€\`, Restguthaben: \`${parseFloat(currentBalance).toFixed(2)}€\`)`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
         }
@@ -460,8 +493,10 @@ app.post('/bonushunt/open/:slotId', upload.single('screenshot'), async (req, res
 
                 await hunt.save();
 
+                const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
                 const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
-                if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt)] });
+                
+                if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt, avatarUrl, rank ? rank.color : null)] });
             } else {
                 await hunt.save();
             }
@@ -490,6 +525,8 @@ app.post('/bonushunt/finish', async (req, res) => {
         const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
         const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
         if (thread) {
+            const { avatarUrl } = await getHuntUserData(req.user.id, req.user);
+            
             const finalEmbed = new EmbedBuilder()
                 .setTitle(`🏁 Bonus Hunt Beendet!`)
                 .setDescription(`Die Walzen stehen still. Hier ist die Endabrechnung für <@${hunt.userId}>:`)
@@ -499,6 +536,7 @@ app.post('/bonushunt/finish', async (req, res) => {
                     { name: profit >= 0 ? '📈 PROFIT' : '📉 LOSS', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
                 )
                 .setColor(profit >= 0 ? '#2ecc71' : '#e74c3c')
+                .setThumbnail(avatarUrl)
                 .setFooter({ text: 'GG! Bis zum nächsten Mal.' })
                 .setTimestamp();
 
@@ -1342,13 +1380,13 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     else if (oldState.channelId && !newState.channelId) saveLog('VOICE_LEAVE', user.username, user.id, `Verlassen`, oldState.channel.name);
     else if (oldState.channelId !== newState.channelId) saveLog('VOICE_MOVE', user.username, user.id, `Gewechselt von #${oldState.channel.name}`, newState.channel.name);
 
-    if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Stream gestartet`, newState.channel.name);
-    else if (oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Stream beendet`, newState.channel.name);
-    if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Cam eingeschaltet`, newState.channel.name);
+    if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Bildschirmübertragung (Stream) gestartet`, newState.channel.name);
+    else if (oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Bildschirmübertragung beendet`, newState.channel.name);
+    if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Kamera eingeschaltet`, newState.channel.name);
 
     if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newState.channel.name);
     if (!oldState.selfDeaf && newState.selfDeaf) saveLog('VOICE_DEAF', user.username, user.id, `Taub gestellt`, newState.channel.name);
-    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Mod gemutet`, newState.channel.name);
+    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Admin gemutet`, newState.channel.name);
 });
 
 // 3. USER JOINS / LEAVES / UPDATES
@@ -1383,6 +1421,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
-
-
