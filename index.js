@@ -1348,7 +1348,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 
     if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newState.channel.name);
     if (!oldState.selfDeaf && newState.selfDeaf) saveLog('VOICE_DEAF', user.username, user.id, `Taub gestellt`, newState.channel.name);
-    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Admin gemutet`, newState.channel.name);
+    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Mod gemutet`, newState.channel.name);
 });
 
 // 3. USER JOINS / LEAVES / UPDATES
@@ -1383,3 +1383,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
