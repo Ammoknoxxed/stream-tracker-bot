@@ -1138,6 +1138,83 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+// --- BUTTON INTERACTION LOGIK (VERIFY SYSTEM) ---
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    const customIdParts = interaction.customId.split('_');
+    const action = customIdParts[0]; 
+    if (action !== 'verify') return;
+
+    const type = customIdParts[1];   // "accept" oder "deny"
+    const targetUserId = customIdParts[2]; 
+    const providerName = customIdParts.slice(3).join('_'); // Der Name des Anbieters
+
+    // Mod Check: Darf der Klicker Rollen verwalten?
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+        return interaction.reply({ content: "⛔ Du hast keine Berechtigung, Verify-Anfragen zu bearbeiten.", ephemeral: true });
+    }
+
+    const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+    const oldEmbed = interaction.message.embeds[0];
+
+    // --- ANNEHMEN (ACCEPT) ---
+    if (type === 'accept') {
+        if (targetMember) {
+            try {
+                // Alle Server-Rollen laden
+                await interaction.guild.roles.fetch(); 
+                
+                // Prüfen, ob die Rolle schon existiert (Groß-/Kleinschreibung wird ignoriert)
+                let providerRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === providerName.toLowerCase());
+                
+                // Wenn die Rolle NICHT existiert -> Erstellen!
+                if (!providerRole) {
+                    providerRole = await interaction.guild.roles.create({
+                        name: providerName,
+                        color: '#3498db', // Blau, kannst du ändern
+                        reason: `Verify System: Neuer Casino-Anbieter freigegeben von ${interaction.user.tag}`
+                    });
+                    log(`🔧 NEUE ROLLE: Rolle "${providerName}" wurde automatisch erstellt.`);
+                }
+
+                // Rolle dem User zuweisen
+                await targetMember.roles.add(providerRole);
+                log(`✅ VERIFY: ${targetMember.user.username} hat die Rolle "${providerName}" erhalten.`);
+
+                // DM an den User schicken
+                await targetMember.send(`✅ **Glückwunsch!** Deine Casino-Verifizierung für **${providerName}** wurde angenommen. Die Rolle wurde dir zugewiesen und du kannst anfangen zu streamen!`).catch(() => {});
+            } catch (err) {
+                log(`❌ Fehler beim Erstellen/Zuweisen der Rolle: ${err.message}`);
+                return interaction.reply({ content: `❌ Fehler beim Verarbeiten: ${err.message}`, ephemeral: true });
+            }
+        }
+
+        // Button-Nachricht im Mod-Channel updaten
+        const newEmbed = EmbedBuilder.from(oldEmbed)
+            .setColor('#2ecc71') // Grün
+            .addFields({ name: 'Status', value: `✅ Akzeptiert & Rolle vergeben durch ${interaction.user}` });
+
+        await interaction.update({ embeds: [newEmbed], components: [] });
+    } 
+    
+    // --- ABLEHNEN (DENY) ---
+    else if (type === 'deny') {
+        if (targetMember) {
+            // DM an den User schicken
+            await targetMember.send(`❌ **Abgelehnt:** Deine Casino-Verifizierung für **${providerName}** wurde leider abgelehnt.`).catch(() => {});
+        }
+
+        // Button-Nachricht im Mod-Channel updaten
+        const newEmbed = EmbedBuilder.from(oldEmbed)
+            .setColor('#e74c3c') // Rot
+            .addFields({ name: 'Status', value: `❌ Abgelehnt von ${interaction.user}` });
+
+        await interaction.update({ embeds: [newEmbed], components: [] });
+        log(`❌ VERIFY: ${interaction.user.username} hat die Anfrage von ${targetMember?.user?.username || targetUserId} für ${providerName} abgelehnt.`);
+    }
+});
+
 // --- AUTOMATISCHER INTERVALL ---
 setInterval(async () => {
     const now = new Date();
@@ -1252,3 +1329,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
