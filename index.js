@@ -731,7 +731,11 @@ client.on('messageCreate', async (message) => {
             new ButtonBuilder()
                 .setCustomId('ask_faq_btn')
                 .setLabel('🙋‍♂️ Eigene Frage stellen')
-                .setStyle(ButtonStyle.Primary)
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('admin_add_faq_btn')
+                .setLabel('⚙️ Direkt hinzufügen')
+                .setStyle(ButtonStyle.Secondary)
         );
 
         await message.channel.send({ embeds: [embed], components: [row] });
@@ -1406,6 +1410,56 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.reply({ content: '✅ Frage als Duplikat/Spam markiert.', ephemeral: true });
     }
 
+    // 7. Admin klickt auf "Direkt hinzufügen"
+    if (interaction.isButton() && interaction.customId === 'admin_add_faq_btn') {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: '⛔ Dieser Button ist nur für Administratoren!', ephemeral: true });
+        }
+        
+        const modal = new ModalBuilder()
+            .setCustomId('modal_admin_add_faq')
+            .setTitle('FAQ direkt posten');
+
+        const questionInput = new TextInputBuilder()
+            .setCustomId('faq_edit_question')
+            .setLabel("Frage")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+
+        const answerInput = new TextInputBuilder()
+            .setCustomId('faq_answer_input')
+            .setLabel("Antwort")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(questionInput),
+            new ActionRowBuilder().addComponents(answerInput)
+        );
+
+        return await interaction.showModal(modal);
+    }
+
+    // 8. Admin schickt das direkte FAQ ab
+    if (interaction.isModalSubmit() && interaction.customId === 'modal_admin_add_faq') {
+        const finalQuestion = interaction.fields.getTextInputValue('faq_edit_question');
+        const finalAnswer = interaction.fields.getTextInputValue('faq_answer_input');
+
+        const faqChannel = interaction.client.channels.cache.get(FAQ_CHANNEL_ID);
+        if (!faqChannel) return interaction.reply({ content: 'FAQ-Channel nicht gefunden!', ephemeral: true });
+
+        const faqEmbed = new EmbedBuilder()
+            .setTitle('💡 FAQ Update')
+            .addFields(
+                { name: '❓ Frage', value: finalQuestion },
+                { name: '💬 Antwort', value: finalAnswer }
+            )
+            .setColor('#fbbf24');
+
+        await faqChannel.send({ embeds: [faqEmbed] });
+        return await interaction.reply({ content: '✅ Erfolgreich direkt hinzugefügt!', ephemeral: true });
+    }
+
 });
 
 
@@ -1583,3 +1637,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
