@@ -46,7 +46,9 @@ const TIME_MOD_CHANNEL_ID = '1021086309860782191';
 const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; 
 const BAN_ROLE_ID = '1476589330301714482';
 const BONUS_HUNT_CHANNEL_ID = '1478547866204110868';
-const FAQ_CHANNEL_ID = '1480437392405172254';
+
+// --- HIER DIE FAQ CHANNELS EINTRAGEN ---
+const FAQ_CHANNEL_ID = '1480437392405172254';       
 const MOD_FAQ_CHANNEL_ID = '1480438468550066206';
 
 // --- 1. DATENBANK MODELLE ---
@@ -79,7 +81,6 @@ const warningSchema = new mongoose.Schema({
 });
 const Warning = mongoose.model('Warning', warningSchema);
 
-// --- 1.5 BONUS HUNT MODELLE ---
 const slotEntrySchema = new mongoose.Schema({
     name: String,
     bet: Number,
@@ -102,7 +103,6 @@ const bonusHuntSchema = new mongoose.Schema({
 });
 const BonusHunt = mongoose.model('BonusHunt', bonusHuntSchema);
 
-// --- 1.6 SERVER LOGS MODELL (NEU FÜR BIG BROTHER) ---
 const logSchema = new mongoose.Schema({
     action: String,       
     username: String,     
@@ -167,7 +167,7 @@ function buildHuntEmbed(hunt, avatarUrl = null, rankColor = null) {
     return embed;
 }
 
-// --- 2. BOT SETUP (ANGEPASST MIT ALLEN INTENTS) ---
+// --- 2. BOT SETUP ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -176,9 +176,8 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildModeration // NEU: Für Bans und Timeouts
+        GatewayIntentBits.GuildModeration 
     ],
-    // NEU: Partials für gelöschte Nachrichten hinzugefügt
     partials: [Partials.GuildMember, Partials.User, Partials.Presence, Partials.Message, Partials.Channel] 
 });
 
@@ -387,7 +386,6 @@ app.post('/bonushunt/start', async (req, res) => {
 
         const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance });
 
-        // User Daten fetchen für Profilbild und Rangbild
         const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
         const startEmbed = buildHuntEmbed(newHunt, avatarUrl, rank ? rank.color : null);
 
@@ -396,7 +394,6 @@ app.post('/bonushunt/start', async (req, res) => {
             embeds: [startEmbed]
         };
 
-        // Rangbild als Datei anhängen für die Forum-Thumbnail-Preview
         if (rank && rank.img) {
             const rankImagePath = path.join(__dirname, 'public', 'images', 'ranks', rank.img);
             messagePayload.files = [new AttachmentBuilder(rankImagePath, { name: 'rankpreview.png' })];
@@ -553,21 +550,17 @@ app.post('/bonushunt/finish', async (req, res) => {
     }
 });
 
-// --- STANDARD DASHBOARD ROUTEN ---
 app.get('/dashboard', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
     const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
     res.render('dashboard', { user: req.user, guilds: adminGuilds });
 });
 
-// --- NEU: SERVER LOGS ROUTE ---
 app.get('/logs', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login?returnTo=/logs');
-    // Admin Check
     const isAdmin = req.user.guilds.some(g => (g.permissions & 0x8) === 0x8);
     if (!isAdmin) return res.status(403).send("⛔ Zugriff verweigert. Nur für Administratoren.");
 
-    // Hole die letzten 500 Logs aus der DB
     const logs = await ServerLog.find().sort({ timestamp: -1 }).limit(500);
     res.render('logs', { user: req.user, logs });
 });
@@ -725,6 +718,7 @@ client.on('messageCreate', async (message) => {
     const args = message.content.split(' ');
     const command = args[0].toLowerCase();
 
+    // --- NEU: FAQ SETUP COMMAND ---
     if (command === '!setupfaq') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
 
@@ -744,8 +738,7 @@ client.on('messageCreate', async (message) => {
         message.delete().catch(()=>{});
         return;
     }
-.
-    
+
     if (command === '!kick') {
         if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
             return message.reply("⛔ Du hast keine Berechtigung, um Leute zu kicken.");
@@ -1153,7 +1146,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         for (const [memberId, member] of channel.members) {
             if (member.user.bot) continue;
 
-            // --- CHECK AUF STREAM-SPERRE ---
             if (member.roles.cache.has(BAN_ROLE_ID) && isAllowedChannel && member.voice.streaming) {
                 try {
                     log(`🚫 SPERRE: ${member.user.username} wurde aus dem Voice gekickt (Stream-Sperre aktiv).`);
@@ -1176,7 +1168,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 }
             }
 
-            // --- NORMALES TRACKING ---
             const isStreamingNow = member.voice.streaming && isAllowedChannel && hasViewers;
             const userData = await StreamUser.findOne({ userId: memberId, guildId });
 
@@ -1193,88 +1184,76 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// --- BUTTON INTERACTION LOGIK (VERIFY SYSTEM) ---
+
+// ==========================================
+// 💡 INTERACTION LOGIK (VERIFY & FAQ)
+// ==========================================
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton()) return;
-
-    const customIdParts = interaction.customId.split('_');
-    const action = customIdParts[0]; 
-    if (action !== 'verify') return;
-
-    const type = customIdParts[1];   // "accept" oder "deny"
-    const targetUserId = customIdParts[2]; 
-    const providerName = customIdParts.slice(3).join('_'); // Der Name des Anbieters
-
-    // Mod Check: Darf der Klicker Rollen verwalten?
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
-        return interaction.reply({ content: "⛔ Du hast keine Berechtigung, Verify-Anfragen zu bearbeiten.", ephemeral: true });
-    }
-
-    const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
-    const oldEmbed = interaction.message.embeds[0];
-
-    // --- ANNEHMEN (ACCEPT) ---
-    if (type === 'accept') {
-        if (targetMember) {
-            try {
-                // Alle Server-Rollen laden
-                await interaction.guild.roles.fetch(); 
-                
-                // Prüfen, ob die Rolle schon existiert (Groß-/Kleinschreibung wird ignoriert)
-                let providerRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === providerName.toLowerCase());
-                
-                // Wenn die Rolle NICHT existiert -> Erstellen!
-                if (!providerRole) {
-                    providerRole = await interaction.guild.roles.create({
-                        name: providerName,
-                        color: '#3498db', // Blau, kannst du ändern
-                        reason: `Verify System: Neuer Casino-Anbieter freigegeben von ${interaction.user.tag}`
-                    });
-                    log(`🔧 NEUE ROLLE: Rolle "${providerName}" wurde automatisch erstellt.`);
-                }
-
-                // Rolle dem User zuweisen
-                await targetMember.roles.add(providerRole);
-                log(`✅ VERIFY: ${targetMember.user.username} hat die Rolle "${providerName}" erhalten.`);
-
-                // DM an den User schicken
-                await targetMember.send(`✅ **Glückwunsch!** Deine Casino-Verifizierung für **${providerName}** wurde angenommen. Die Rolle wurde dir zugewiesen und du kannst anfangen zu streamen!`).catch(() => {});
-            } catch (err) {
-                log(`❌ Fehler beim Erstellen/Zuweisen der Rolle: ${err.message}`);
-                return interaction.reply({ content: `❌ Fehler beim Verarbeiten: ${err.message}`, ephemeral: true });
-            }
-        }
-
-        // Button-Nachricht im Mod-Channel updaten
-        const newEmbed = EmbedBuilder.from(oldEmbed)
-            .setColor('#2ecc71') // Grün
-            .addFields({ name: 'Status', value: `✅ Akzeptiert & Rolle vergeben durch ${interaction.user}` });
-
-        await interaction.update({ embeds: [newEmbed], components: [] });
-    } 
     
-    // --- ABLEHNEN (DENY) ---
-    else if (type === 'deny') {
-        if (targetMember) {
-            // DM an den User schicken
-            await targetMember.send(`❌ **Abgelehnt:** Deine Casino-Verifizierung für **${providerName}** wurde leider abgelehnt.`).catch(() => {});
+    // ---- 1. CASINO VERIFY SYSTEM ----
+    if (interaction.isButton() && interaction.customId.startsWith('verify_')) {
+        const customIdParts = interaction.customId.split('_');
+        const type = customIdParts[1];   
+        const targetUserId = customIdParts[2]; 
+        const providerName = customIdParts.slice(3).join('_');
+
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+            return interaction.reply({ content: "⛔ Du hast keine Berechtigung, Verify-Anfragen zu bearbeiten.", ephemeral: true });
         }
 
-        // Button-Nachricht im Mod-Channel updaten
-        const newEmbed = EmbedBuilder.from(oldEmbed)
-            .setColor('#e74c3c') // Rot
-            .addFields({ name: 'Status', value: `❌ Abgelehnt von ${interaction.user}` });
+        const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+        const oldEmbed = interaction.message.embeds[0];
 
-        await interaction.update({ embeds: [newEmbed], components: [] });
-        log(`❌ VERIFY: ${interaction.user.username} hat die Anfrage von ${targetMember?.user?.username || targetUserId} für ${providerName} abgelehnt.`);
+        if (type === 'accept') {
+            if (targetMember) {
+                try {
+                    await interaction.guild.roles.fetch(); 
+                    let providerRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === providerName.toLowerCase());
+                    
+                    if (!providerRole) {
+                        providerRole = await interaction.guild.roles.create({
+                            name: providerName,
+                            color: '#3498db', 
+                            reason: `Verify System: Neuer Casino-Anbieter freigegeben von ${interaction.user.tag}`
+                        });
+                        log(`🔧 NEUE ROLLE: Rolle "${providerName}" wurde automatisch erstellt.`);
+                    }
+
+                    await targetMember.roles.add(providerRole);
+                    log(`✅ VERIFY: ${targetMember.user.username} hat die Rolle "${providerName}" erhalten.`);
+                    await targetMember.send(`✅ **Glückwunsch!** Deine Casino-Verifizierung für **${providerName}** wurde angenommen. Die Rolle wurde dir zugewiesen und du kannst anfangen zu streamen!`).catch(() => {});
+                } catch (err) {
+                    log(`❌ Fehler beim Erstellen/Zuweisen der Rolle: ${err.message}`);
+                    return interaction.reply({ content: `❌ Fehler beim Verarbeiten: ${err.message}`, ephemeral: true });
+                }
+            }
+
+            const newEmbed = EmbedBuilder.from(oldEmbed)
+                .setColor('#2ecc71') 
+                .addFields({ name: 'Status', value: `✅ Akzeptiert & Rolle vergeben durch ${interaction.user}` });
+
+            return await interaction.update({ embeds: [newEmbed], components: [] });
+        } 
+        
+        else if (type === 'deny') {
+            if (targetMember) {
+                await targetMember.send(`❌ **Abgelehnt:** Deine Casino-Verifizierung für **${providerName}** wurde leider abgelehnt.`).catch(() => {});
+            }
+
+            const newEmbed = EmbedBuilder.from(oldEmbed)
+                .setColor('#e74c3c') 
+                .addFields({ name: 'Status', value: `❌ Abgelehnt von ${interaction.user}` });
+
+            await interaction.update({ embeds: [newEmbed], components: [] });
+            log(`❌ VERIFY: ${interaction.user.username} hat die Anfrage von ${targetMember?.user?.username || targetUserId} für ${providerName} abgelehnt.`);
+            return;
+        }
     }
-});
 
-// ==========================================
-// 💡 FAQ SYSTEM LOGIK (NEUER BLOCK)
-// ==========================================
-client.on('interactionCreate', async (interaction) => {
-    // 1. User klickt auf "Frage stellen"
+
+    // ---- 2. FAQ SYSTEM LOGIK ----
+    
+    // User klickt auf "Frage stellen"
     if (interaction.isButton() && interaction.customId === 'ask_faq_btn') {
         const modal = new ModalBuilder()
             .setCustomId('modal_ask_faq')
@@ -1292,7 +1271,7 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.showModal(modal);
     }
 
-    // 2. User hat das Formular abgeschickt -> Geht in den Mod Channel
+    // User hat das Formular abgeschickt -> Geht in den Mod Channel
     if (interaction.isModalSubmit() && interaction.customId === 'modal_ask_faq') {
         const question = interaction.fields.getTextInputValue('faq_question_input');
         
@@ -1320,7 +1299,7 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.reply({ content: '✅ Deine Frage wurde an die Moderatoren gesendet! Wenn sie für alle relevant ist, taucht sie bald hier auf.', ephemeral: true });
     }
 
-    // 3. Mod klickt auf "Beantworten"
+    // Mod klickt auf "Beantworten"
     if (interaction.isButton() && interaction.customId.startsWith('faq_ans_')) {
         const userId = interaction.customId.split('_')[2];
         const originalQuestion = interaction.message.embeds[0].description.split('**Frage:**\n')[1];
@@ -1329,7 +1308,6 @@ client.on('interactionCreate', async (interaction) => {
             .setCustomId(`modal_ans_faq_${userId}_${interaction.message.id}`)
             .setTitle('FAQ Beantworten');
 
-        // Der Mod kann die Frage des Users grammatikalisch anpassen, bevor sie gepostet wird!
         const questionInput = new TextInputBuilder()
             .setCustomId('faq_edit_question')
             .setLabel("Korrigierte Frage (Fürs öffentliche FAQ)")
@@ -1351,7 +1329,7 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.showModal(modal);
     }
 
-    // 4. Mod schickt die Antwort ab -> Ab in den öffentlichen Channel!
+    // Mod schickt die Antwort ab -> Ab in den öffentlichen Channel!
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_ans_faq_')) {
         const parts = interaction.customId.split('_');
         const userId = parts[3];
@@ -1363,7 +1341,6 @@ client.on('interactionCreate', async (interaction) => {
         const faqChannel = interaction.client.channels.cache.get(FAQ_CHANNEL_ID);
         if (!faqChannel) return interaction.reply({ content: 'FAQ-Channel nicht gefunden!', ephemeral: true });
 
-        // Das öffentliche Design
         const faqEmbed = new EmbedBuilder()
             .setTitle('💡 FAQ Update')
             .addFields(
@@ -1375,14 +1352,12 @@ client.on('interactionCreate', async (interaction) => {
 
         await faqChannel.send({ embeds: [faqEmbed] });
 
-        // Mod-Nachricht aktualisieren (Buttons wegmachen)
         const updatedModEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor('#2ecc71')
             .addFields({ name: 'Status', value: `✅ Beantwortet und gepostet von ${interaction.user}` });
 
         await interaction.message.edit({ embeds: [updatedModEmbed], components: [] });
 
-        // User per DM benachrichtigen
         const user = await interaction.client.users.fetch(userId).catch(()=>null);
         if (user) {
             user.send(`Gute Nachrichten! Deine Frage wurde soeben im <#${FAQ_CHANNEL_ID}> beantwortet.`).catch(()=>{});
@@ -1391,7 +1366,7 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.reply({ content: '✅ Erfolgreich im FAQ veröffentlicht!', ephemeral: true });
     }
 
-    // 5. Mod klickt auf "Ablehnen" (Duplikat/Spam)
+    // Mod klickt auf "Ablehnen" (Duplikat/Spam)
     if (interaction.isButton() && interaction.customId.startsWith('faq_rej_')) {
         const userId = interaction.customId.split('_')[2];
 
@@ -1410,7 +1385,7 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.showModal(modal);
     }
 
-    // 6. Mod schickt Ablehnung ab
+    // Mod schickt Ablehnung ab
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_rej_faq_')) {
         const parts = interaction.customId.split('_');
         const userId = parts[3];
@@ -1423,7 +1398,6 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.message.edit({ embeds: [updatedModEmbed], components: [] });
 
-        // User per DM informieren
         const user = await interaction.client.users.fetch(userId).catch(()=>null);
         if (user) {
             user.send(`Deine Frage für das FAQ wurde leider abgelehnt.\n**Grund:** ${reason}`).catch(()=>{});
@@ -1431,10 +1405,9 @@ client.on('interactionCreate', async (interaction) => {
 
         return await interaction.reply({ content: '✅ Frage als Duplikat/Spam markiert.', ephemeral: true });
     }
+
 });
-// ==========================================
-// ENDE FAQ LOGIK
-// ==========================================
+
 
 // --- AUTOMATISCHER INTERVALL ---
 setInterval(async () => {
@@ -1570,7 +1543,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     else if (oldState.channelId !== newState.channelId) saveLog('VOICE_MOVE', user.username, user.id, `Gewechselt von #${oldState.channel.name}`, newState.channel.name);
 
     if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Bildschirmübertragung (Stream) gestartet`, newState.channel.name);
-    else if (oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Bildschirmübertragung beendet`, newState.channel.name);
+    else if (!oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Bildschirmübertragung beendet`, newState.channel.name);
     if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Kamera eingeschaltet`, newState.channel.name);
 
     if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newState.channel.name);
@@ -1610,4 +1583,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
