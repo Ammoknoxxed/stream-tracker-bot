@@ -269,19 +269,27 @@ function getSortedUsers(users, sortKey = 'effectiveTotal') {
     }).sort((a, b) => b[sortKey] - a[sortKey]);
 }
 
-async function enrichUserData(guild, sortedUsers) {
-    return await Promise.all(sortedUsers.map(async (u) => {
-        try {
-            const member = await guild.members.fetch(u.userId).catch(() => null);
-            return {
-                ...u,
-                displayName: member ? member.displayName : u.username, 
-                avatar: member ? member.displayAvatarURL() : u.avatar
-            };
-        } catch (e) {
-            return { ...u, displayName: u.username };
-        }
-    }));
+// 🔥 N+1 QUERY FIX: Diese Funktion nutzt nun den Cache statt 100 API Requests
+function enrichUserData(guild, sortedUsers) {
+    const membersCache = guild.members.cache;
+
+    return sortedUsers.map(u => {
+        const member = membersCache.get(u.userId);
+        
+        let finalDisplayName = u.username;
+        let finalAvatar = u.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+
+        if (member) {
+            finalDisplayName = member.displayName;
+            finalAvatar = member.displayAvatarURL() || finalAvatar;
+        } 
+        
+        return {
+            ...u,
+            displayName: finalDisplayName,
+            avatar: finalAvatar
+        };
+    });
 }
 
 async function syncUserRoles(userData, now = new Date()) {
@@ -373,10 +381,10 @@ app.get('/leaderboard/:guildId', async (req, res) => {
         const users = await StreamUser.find({ guildId });
         
         const sortedAllTime = getSortedUsers(users, 'effectiveTotal');
-        const enrichedAllTime = await enrichUserData(guild, sortedAllTime);
+        const enrichedAllTime = enrichUserData(guild, sortedAllTime); // 🔥 Gefixed (Kein await mehr)
 
         const sortedMonthly = getSortedUsers(users, 'effectiveMonthly').filter(u => u.effectiveMonthly > 0 || u.isStreaming);
-        const enrichedMonthly = await enrichUserData(guild, sortedMonthly);
+        const enrichedMonthly = enrichUserData(guild, sortedMonthly); // 🔥 Gefixed (Kein await mehr)
 
         res.render('leaderboard_public', { 
             guild, 
@@ -644,7 +652,7 @@ app.get('/dashboard/:guildId', async (req, res) => {
     
     const users = await StreamUser.find({ guildId: guild.id });
     const sortedUsers = getSortedUsers(users);
-    const enrichedUsers = await enrichUserData(guild, sortedUsers);
+    const enrichedUsers = enrichUserData(guild, sortedUsers); // 🔥 Gefixed (Kein await mehr)
 
     const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
     const channels = guild.channels.cache.filter(c => [2, 4].includes(c.type)).map(c => ({ id: c.id, name: c.name }));
