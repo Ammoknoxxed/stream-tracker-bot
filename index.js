@@ -143,13 +143,23 @@ async function refreshFaqChannel(client, guildId) {
         .setColor('#fbbf24');
     embeds.push(introEmbed);
 
-    // Fragen in Blöcke aufteilen (Discord erlaubt max. 25 Felder pro Embed, wir machen max 20 der Übersicht wegen)
-    for (let i = 0; i < faqs.length; i += 20) {
-        const chunk = faqs.slice(i, i + 20);
-        const embed = new EmbedBuilder().setColor('#fbbf24');
+    // Neues Design: Wir verpacken immer max. 4 Fragen in ein eigenes, sauberes Embed (bessere visuelle Trennung)
+    for (let i = 0; i < faqs.length; i += 4) {
+        const chunk = faqs.slice(i, i + 4);
+        let descriptionText = "";
+        
         chunk.forEach(faq => {
-            embed.addFields({ name: `❓ ${faq.question}`, value: `💬 ${faq.answer}` });
+            // Blockzitat-Design (>) für die Antwort und eine dezente Trennlinie
+            descriptionText += `**❓ ${faq.question}**\n> 💬 ${faq.answer}\n\n──────────────────────────────\n\n`;
         });
+
+        // Die allerletzte Trennlinie im Block entfernen
+        descriptionText = descriptionText.replace(/\n\n──────────────────────────────\n\n$/, '');
+
+        const embed = new EmbedBuilder()
+            .setColor('#2b2d31') // Ein schickes Discord-Grau, damit die Fragen weicher wirken
+            .setDescription(descriptionText);
+        
         embeds.push(embed);
     }
 
@@ -173,7 +183,7 @@ async function refreshFaqChannel(client, guildId) {
         // Master-Nachricht existiert -> Einfach aktualisieren!
         await botMessage.edit({ embeds, components: [row] });
     } else {
-        // Keine da -> Neue posten
+        // Keine da -> Alte Nachrichten aufräumen und neue posten
         await faqChannel.bulkDelete(10).catch(()=>{});
         await faqChannel.send({ embeds, components: [row] });
     }
@@ -1660,3 +1670,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
