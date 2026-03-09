@@ -1659,13 +1659,13 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     else if (oldState.channelId && !newState.channelId) saveLog('VOICE_LEAVE', user.username, user.id, `Verlassen`, oldState.channel.name);
     else if (oldState.channelId !== newState.channelId) saveLog('VOICE_MOVE', user.username, user.id, `Gewechselt von #${oldState.channel.name}`, newState.channel.name);
 
-    if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Bildschirmübertragung (Stream) gestartet`, newState.channel.name);
-    else if (!oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Bildschirmübertragung beendet`, newState.channel.name);
-    if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Kamera eingeschaltet`, newState.channel.name);
+    if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Bildschirmübertragung (Stream) gestartet`, newState.channel ? newState.channel.name : oldState.channel.name);
+    else if (!oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Bildschirmübertragung beendet`, newState.channel ? newState.channel.name : oldState.channel.name);
+    if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Kamera eingeschaltet`, newState.channel ? newState.channel.name : oldState.channel.name);
 
-    if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newState.channel.name);
-    if (!oldState.selfDeaf && newState.selfDeaf) saveLog('VOICE_DEAF', user.username, user.id, `Taub gestellt`, newState.channel.name);
-    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Admin gemutet`, newState.channel.name);
+    if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newState.channel ? newState.channel.name : oldState.channel.name);
+    if (!oldState.selfDeaf && newState.selfDeaf) saveLog('VOICE_DEAF', user.username, user.id, `Taub gestellt`, newState.channel ? newState.channel.name : oldState.channel.name);
+    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Admin gemutet`, newState.channel ? newState.channel.name : oldState.channel.name);
 });
 
 // 3. USER JOINS / LEAVES / UPDATES
