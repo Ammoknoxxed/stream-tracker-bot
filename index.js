@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const express = require('express');
 const passport = require('passport');
 const { Strategy } = require('passport-discord');
@@ -46,6 +46,8 @@ const TIME_MOD_CHANNEL_ID = '1021086309860782191';
 const STREAM_LOG_CHANNEL_ID = '1476560015807615191'; 
 const BAN_ROLE_ID = '1476589330301714482';
 const BONUS_HUNT_CHANNEL_ID = '1478547866204110868';
+const FAQ_CHANNEL_ID = '1480437392405172254';
+const MOD_FAQ_CHANNEL_ID = '1480438468550066206';
 
 // --- 1. DATENBANK MODELLE ---
 const guildConfigSchema = new mongoose.Schema({
@@ -723,6 +725,27 @@ client.on('messageCreate', async (message) => {
     const args = message.content.split(' ');
     const command = args[0].toLowerCase();
 
+    if (command === '!setupfaq') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+
+        const embed = new EmbedBuilder()
+            .setTitle('📚 Community FAQ & Hilfe')
+            .setDescription('Hier findest du Antworten auf die häufigsten Fragen.\n\nDeine Frage ist nicht dabei? Klicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!')
+            .setColor('#fbbf24');
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('ask_faq_btn')
+                .setLabel('🙋‍♂️ Eigene Frage stellen')
+                .setStyle(ButtonStyle.Primary)
+        );
+
+        await message.channel.send({ embeds: [embed], components: [row] });
+        message.delete().catch(()=>{});
+        return;
+    }
+.
+    
     if (command === '!kick') {
         if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
             return message.reply("⛔ Du hast keine Berechtigung, um Leute zu kicken.");
@@ -1247,6 +1270,172 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// ==========================================
+// 💡 FAQ SYSTEM LOGIK (NEUER BLOCK)
+// ==========================================
+client.on('interactionCreate', async (interaction) => {
+    // 1. User klickt auf "Frage stellen"
+    if (interaction.isButton() && interaction.customId === 'ask_faq_btn') {
+        const modal = new ModalBuilder()
+            .setCustomId('modal_ask_faq')
+            .setTitle('Stelle deine Frage');
+
+        const questionInput = new TextInputBuilder()
+            .setCustomId('faq_question_input')
+            .setLabel("Was möchtest du wissen?")
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder("z.B. Wie funktioniert die Auszahlung auf Krypto?")
+            .setRequired(true)
+            .setMaxLength(500);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(questionInput));
+        return await interaction.showModal(modal);
+    }
+
+    // 2. User hat das Formular abgeschickt -> Geht in den Mod Channel
+    if (interaction.isModalSubmit() && interaction.customId === 'modal_ask_faq') {
+        const question = interaction.fields.getTextInputValue('faq_question_input');
+        
+        const modChannel = interaction.client.channels.cache.get(MOD_FAQ_CHANNEL_ID);
+        if (!modChannel) return interaction.reply({ content: 'Mod-Channel nicht gefunden!', ephemeral: true });
+
+        const embed = new EmbedBuilder()
+            .setTitle('❓ Neue FAQ Anfrage')
+            .setDescription(`**Von:** ${interaction.user} (${interaction.user.tag})\n\n**Frage:**\n${question}`)
+            .setColor('#3498db')
+            .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`faq_ans_${interaction.user.id}`)
+                .setLabel('✏️ Beantworten & Posten')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId(`faq_rej_${interaction.user.id}`)
+                .setLabel('🗑️ Ablehnen / Duplikat')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        await modChannel.send({ embeds: [embed], components: [row] });
+        return await interaction.reply({ content: '✅ Deine Frage wurde an die Moderatoren gesendet! Wenn sie für alle relevant ist, taucht sie bald hier auf.', ephemeral: true });
+    }
+
+    // 3. Mod klickt auf "Beantworten"
+    if (interaction.isButton() && interaction.customId.startsWith('faq_ans_')) {
+        const userId = interaction.customId.split('_')[2];
+        const originalQuestion = interaction.message.embeds[0].description.split('**Frage:**\n')[1];
+
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_ans_faq_${userId}_${interaction.message.id}`)
+            .setTitle('FAQ Beantworten');
+
+        // Der Mod kann die Frage des Users grammatikalisch anpassen, bevor sie gepostet wird!
+        const questionInput = new TextInputBuilder()
+            .setCustomId('faq_edit_question')
+            .setLabel("Korrigierte Frage (Fürs öffentliche FAQ)")
+            .setStyle(TextInputStyle.Paragraph)
+            .setValue(originalQuestion) 
+            .setRequired(true);
+
+        const answerInput = new TextInputBuilder()
+            .setCustomId('faq_answer_input')
+            .setLabel("Deine offizielle Antwort")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(questionInput),
+            new ActionRowBuilder().addComponents(answerInput)
+        );
+
+        return await interaction.showModal(modal);
+    }
+
+    // 4. Mod schickt die Antwort ab -> Ab in den öffentlichen Channel!
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_ans_faq_')) {
+        const parts = interaction.customId.split('_');
+        const userId = parts[3];
+        const msgId = parts[4];
+
+        const finalQuestion = interaction.fields.getTextInputValue('faq_edit_question');
+        const finalAnswer = interaction.fields.getTextInputValue('faq_answer_input');
+
+        const faqChannel = interaction.client.channels.cache.get(FAQ_CHANNEL_ID);
+        if (!faqChannel) return interaction.reply({ content: 'FAQ-Channel nicht gefunden!', ephemeral: true });
+
+        // Das öffentliche Design
+        const faqEmbed = new EmbedBuilder()
+            .setTitle('💡 FAQ Update')
+            .addFields(
+                { name: '❓ Frage', value: finalQuestion },
+                { name: '💬 Antwort', value: finalAnswer }
+            )
+            .setColor('#fbbf24')
+            .setFooter({ text: `Beantwortet von ${interaction.user.username}` });
+
+        await faqChannel.send({ embeds: [faqEmbed] });
+
+        // Mod-Nachricht aktualisieren (Buttons wegmachen)
+        const updatedModEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor('#2ecc71')
+            .addFields({ name: 'Status', value: `✅ Beantwortet und gepostet von ${interaction.user}` });
+
+        await interaction.message.edit({ embeds: [updatedModEmbed], components: [] });
+
+        // User per DM benachrichtigen
+        const user = await interaction.client.users.fetch(userId).catch(()=>null);
+        if (user) {
+            user.send(`Gute Nachrichten! Deine Frage wurde soeben im <#${FAQ_CHANNEL_ID}> beantwortet.`).catch(()=>{});
+        }
+
+        return await interaction.reply({ content: '✅ Erfolgreich im FAQ veröffentlicht!', ephemeral: true });
+    }
+
+    // 5. Mod klickt auf "Ablehnen" (Duplikat/Spam)
+    if (interaction.isButton() && interaction.customId.startsWith('faq_rej_')) {
+        const userId = interaction.customId.split('_')[2];
+
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_rej_faq_${userId}_${interaction.message.id}`)
+            .setTitle('Frage Ablehnen');
+
+        const reasonInput = new TextInputBuilder()
+            .setCustomId('faq_reject_reason')
+            .setLabel("Warum wird die Frage abgelehnt?")
+            .setStyle(TextInputStyle.Short)
+            .setValue("Diese Frage wurde im FAQ bereits beantwortet. Bitte lies die bisherigen Einträge durch.")
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+        return await interaction.showModal(modal);
+    }
+
+    // 6. Mod schickt Ablehnung ab
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_rej_faq_')) {
+        const parts = interaction.customId.split('_');
+        const userId = parts[3];
+        const msgId = parts[4];
+        const reason = interaction.fields.getTextInputValue('faq_reject_reason');
+
+        const updatedModEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor('#e74c3c')
+            .addFields({ name: 'Status', value: `🗑️ Abgelehnt von ${interaction.user}\n**Grund:** ${reason}` });
+
+        await interaction.message.edit({ embeds: [updatedModEmbed], components: [] });
+
+        // User per DM informieren
+        const user = await interaction.client.users.fetch(userId).catch(()=>null);
+        if (user) {
+            user.send(`Deine Frage für das FAQ wurde leider abgelehnt.\n**Grund:** ${reason}`).catch(()=>{});
+        }
+
+        return await interaction.reply({ content: '✅ Frage als Duplikat/Spam markiert.', ephemeral: true });
+    }
+});
+// ==========================================
+// ENDE FAQ LOGIK
+// ==========================================
+
 // --- AUTOMATISCHER INTERVALL ---
 setInterval(async () => {
     const now = new Date();
@@ -1421,3 +1610,4 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
+
