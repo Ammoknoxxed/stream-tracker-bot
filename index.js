@@ -136,14 +136,17 @@ async function refreshFaqChannel(client, guildId) {
     const faqs = await FaqEntry.find({ guildId }).sort({ createdAt: 1 });
     
     // 1. Vorherige Nachrichten im FAQ-Channel löschen (damit es immer sauber bleibt)
-    const fetched = await faqChannel.messages.fetch({ limit: 50 });
     try {
-        await faqChannel.bulkDelete(fetched);
-    } catch(e) {
-        // Fallback, falls Nachrichten älter als 14 Tage sind
-        for (const msg of fetched.values()) {
+        const fetched = await faqChannel.messages.fetch({ limit: 50 });
+        await faqChannel.bulkDelete(fetched, true);
+        
+        // Fallback falls Nachrichten älter als 14 Tage sind
+        const fetchedAfter = await faqChannel.messages.fetch({ limit: 50 });
+        for (const msg of fetchedAfter.values()) {
             await msg.delete().catch(() => {});
         }
+    } catch(e) {
+        log("⚠️ Konnte FAQ-Channel nicht vollständig leeren: " + e.message);
     }
 
     // 2. Das Haupt-Intro senden
@@ -172,16 +175,12 @@ async function refreshFaqChannel(client, guildId) {
         await faqChannel.send({ embeds: [embed] });
     }
 
-    // 4. Die Buttons GANZ UNTEN anheften
+    // 4. Die Buttons GANZ UNTEN anheften (NUR FÜR USER)
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('ask_faq_btn')
             .setLabel('🙋‍♂️ Eigene Frage stellen')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('admin_add_faq_btn')
-            .setLabel('⚙️ Direkt hinzufügen')
-            .setStyle(ButtonStyle.Secondary)
+            .setStyle(ButtonStyle.Primary)
     );
 
     const actionEmbed = new EmbedBuilder()
@@ -795,6 +794,27 @@ client.on('messageCreate', async (message) => {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
         
         await refreshFaqChannel(client, message.guild.id);
+        message.delete().catch(()=>{});
+        return;
+    }
+
+    // --- NEU: GEHEIMES FAQ ADMIN PANEL ---
+    if (command === '!faqadmin') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+        
+        const embed = new EmbedBuilder()
+            .setTitle('⚙️ FAQ Admin Panel')
+            .setDescription('Klicke auf diesen Button, um lautlos neue Fragen zum öffentlichen FAQ hinzuzufügen. Der Bot baut das öffentliche Embed dann automatisch neu auf.')
+            .setColor('#2ecc71');
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('admin_add_faq_btn')
+                .setLabel('➕ Frage direkt hinzufügen')
+                .setStyle(ButtonStyle.Success)
+        );
+
+        await message.channel.send({ embeds: [embed], components: [row] });
         message.delete().catch(()=>{});
         return;
     }
