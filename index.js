@@ -47,7 +47,6 @@ const STREAM_LOG_CHANNEL_ID = '1476560015807615191';
 const BAN_ROLE_ID = '1476589330301714482';
 const BONUS_HUNT_CHANNEL_ID = '1478547866204110868';
 
-// --- HIER DIE FAQ CHANNELS EINTRAGEN ---
 const FAQ_CHANNEL_ID = '1480437392405172254';       
 const MOD_FAQ_CHANNEL_ID = '1480438468550066206';
 
@@ -117,6 +116,67 @@ async function saveLog(action, username, userId, details, channel = 'System') {
     try {
         await ServerLog.create({ action, username, userId, details, channel });
     } catch (e) { console.error("Log Error:", e); }
+}
+
+// --- 1.5 FAQ DATENBANK MODELL ---
+const faqEntrySchema = new mongoose.Schema({
+    guildId: String,
+    question: String,
+    answer: String,
+    createdAt: { type: Date, default: Date.now }
+});
+const FaqEntry = mongoose.model('FaqEntry', faqEntrySchema);
+
+// --- FAQ MASTER-BLOCK UPDATER ---
+async function refreshFaqChannel(client, guildId) {
+    const faqChannel = client.channels.cache.get(FAQ_CHANNEL_ID);
+    if (!faqChannel) return;
+
+    // Hole alle FAQs sortiert nach Erstellungsdatum
+    const faqs = await FaqEntry.find({ guildId }).sort({ createdAt: 1 });
+    const embeds = [];
+    
+    // Das Haupt-Intro
+    const introEmbed = new EmbedBuilder()
+        .setTitle('📚 Community FAQ & Hilfe')
+        .setDescription('Hier findest du Antworten auf die häufigsten Fragen.\n\nDeine Frage ist nicht dabei? Klicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!')
+        .setColor('#fbbf24');
+    embeds.push(introEmbed);
+
+    // Fragen in Blöcke aufteilen (Discord erlaubt max. 25 Felder pro Embed, wir machen max 20 der Übersicht wegen)
+    for (let i = 0; i < faqs.length; i += 20) {
+        const chunk = faqs.slice(i, i + 20);
+        const embed = new EmbedBuilder().setColor('#fbbf24');
+        chunk.forEach(faq => {
+            embed.addFields({ name: `❓ ${faq.question}`, value: `💬 ${faq.answer}` });
+        });
+        embeds.push(embed);
+    }
+
+    // Die Buttons
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('ask_faq_btn')
+            .setLabel('🙋‍♂️ Eigene Frage stellen')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('admin_add_faq_btn')
+            .setLabel('⚙️ Direkt hinzufügen')
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    // Sucht die bestehende Master-Nachricht
+    const messages = await faqChannel.messages.fetch({ limit: 10 });
+    const botMessage = messages.find(m => m.author.id === client.user.id && m.components.length > 0);
+
+    if (botMessage) {
+        // Master-Nachricht existiert -> Einfach aktualisieren!
+        await botMessage.edit({ embeds, components: [row] });
+    } else {
+        // Keine da -> Neue posten
+        await faqChannel.bulkDelete(10).catch(()=>{});
+        await faqChannel.send({ embeds, components: [row] });
+    }
 }
 
 // --- HELPER FÜR BONUS HUNT EMBED ---
@@ -721,24 +781,8 @@ client.on('messageCreate', async (message) => {
     // --- NEU: FAQ SETUP COMMAND ---
     if (command === '!setupfaq') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-
-        const embed = new EmbedBuilder()
-            .setTitle('📚 Community FAQ & Hilfe')
-            .setDescription('Hier findest du Antworten auf die häufigsten Fragen.\n\nDeine Frage ist nicht dabei? Klicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!')
-            .setColor('#fbbf24');
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('ask_faq_btn')
-                .setLabel('🙋‍♂️ Eigene Frage stellen')
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('admin_add_faq_btn')
-                .setLabel('⚙️ Direkt hinzufügen')
-                .setStyle(ButtonStyle.Secondary)
-        );
-
-        await message.channel.send({ embeds: [embed], components: [row] });
+        
+        await refreshFaqChannel(client, message.guild.id);
         message.delete().catch(()=>{});
         return;
     }
@@ -1333,32 +1377,20 @@ client.on('interactionCreate', async (interaction) => {
         return await interaction.showModal(modal);
     }
 
-    // Mod schickt die Antwort ab -> Ab in den öffentlichen Channel!
+    // 4. Mod schickt die Antwort ab -> Ab ins Master-Embed!
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_ans_faq_')) {
         const parts = interaction.customId.split('_');
         const userId = parts[3];
-        const msgId = parts[4];
 
         const finalQuestion = interaction.fields.getTextInputValue('faq_edit_question');
         const finalAnswer = interaction.fields.getTextInputValue('faq_answer_input');
 
-        const faqChannel = interaction.client.channels.cache.get(FAQ_CHANNEL_ID);
-        if (!faqChannel) return interaction.reply({ content: 'FAQ-Channel nicht gefunden!', ephemeral: true });
-
-        const faqEmbed = new EmbedBuilder()
-            .setTitle('💡 FAQ Update')
-            .addFields(
-                { name: '❓ Frage', value: finalQuestion },
-                { name: '💬 Antwort', value: finalAnswer }
-            )
-            .setColor('#fbbf24')
-            .setFooter({ text: `Beantwortet von ${interaction.user.username}` });
-
-        await faqChannel.send({ embeds: [faqEmbed] });
+        await FaqEntry.create({ guildId: interaction.guild.id, question: finalQuestion, answer: finalAnswer });
+        await refreshFaqChannel(interaction.client, interaction.guild.id);
 
         const updatedModEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor('#2ecc71')
-            .addFields({ name: 'Status', value: `✅ Beantwortet und gepostet von ${interaction.user}` });
+            .addFields({ name: 'Status', value: `✅ Beantwortet und im FAQ-Block gespeichert von ${interaction.user}` });
 
         await interaction.message.edit({ embeds: [updatedModEmbed], components: [] });
 
@@ -1367,7 +1399,7 @@ client.on('interactionCreate', async (interaction) => {
             user.send(`Gute Nachrichten! Deine Frage wurde soeben im <#${FAQ_CHANNEL_ID}> beantwortet.`).catch(()=>{});
         }
 
-        return await interaction.reply({ content: '✅ Erfolgreich im FAQ veröffentlicht!', ephemeral: true });
+        return await interaction.reply({ content: '✅ Erfolgreich zum FAQ-Block hinzugefügt!', ephemeral: true });
     }
 
     // Mod klickt auf "Ablehnen" (Duplikat/Spam)
@@ -1445,19 +1477,10 @@ client.on('interactionCreate', async (interaction) => {
         const finalQuestion = interaction.fields.getTextInputValue('faq_edit_question');
         const finalAnswer = interaction.fields.getTextInputValue('faq_answer_input');
 
-        const faqChannel = interaction.client.channels.cache.get(FAQ_CHANNEL_ID);
-        if (!faqChannel) return interaction.reply({ content: 'FAQ-Channel nicht gefunden!', ephemeral: true });
-
-        const faqEmbed = new EmbedBuilder()
-            .setTitle('💡 FAQ Update')
-            .addFields(
-                { name: '❓ Frage', value: finalQuestion },
-                { name: '💬 Antwort', value: finalAnswer }
-            )
-            .setColor('#fbbf24');
-
-        await faqChannel.send({ embeds: [faqEmbed] });
-        return await interaction.reply({ content: '✅ Erfolgreich direkt hinzugefügt!', ephemeral: true });
+        await FaqEntry.create({ guildId: interaction.guild.id, question: finalQuestion, answer: finalAnswer });
+        await refreshFaqChannel(interaction.client, interaction.guild.id);
+        
+        return await interaction.reply({ content: '✅ Erfolgreich zum FAQ-Block hinzugefügt!', ephemeral: true });
     }
 
 });
@@ -1637,4 +1660,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
