@@ -13,6 +13,7 @@ require('dotenv').config();
 function log(m) { console.log(`[${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}] ${m}`); }
 const upload = multer({ storage: multer.memoryStorage() });
 
+// --- 0. KONFIGURATION YEE ---
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
@@ -320,9 +321,9 @@ client.on('messageCreate', async (message) => {
 
     if (command === '!check' && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
         const t = message.mentions.members.first(); if (!t?.voice.channel) return message.reply("⚠️ User nicht im Voice.");
-        const embed = new EmbedBuilder().setTitle(`📸 Stream: ${t.user.username}`).setImage(`https://discordapp.com/api/v6/streams/guild:${message.guild.id}:${t.voice.channel.id}:${t.id}/preview?v=${Date.now()}`).setColor(t.voice.streaming ? '#2ecc71' : '#e74c3c');
+        const embed = new EmbedBuilder().setTitle(`📸 Stream-Check: ${t.user.username}`).setDescription(`**Channel:** ${t.voice.channel.name}\n\n*Hinweis: Falls kein Bild erscheint, blockiert Discord den Zugriff für Bots oder der Stream wurde gerade erst gestartet.*`).setImage(`https://discordapp.com/api/v6/streams/guild:${message.guild.id}:${t.voice.channel.id}:${t.id}/preview?v=${Date.now()}`).setColor(t.voice.streaming ? '#2ecc71' : '#e74c3c').setFooter({ text: `Abgefragt von ${message.author.username}` }).setTimestamp();
         const modCh = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
-        if (modCh) { await modCh.send({ embeds: [embed] }); return message.reply(`✅ Bild in Mod-Kanal.`); } else return message.reply({ embeds: [embed] });
+        if (modCh) { await modCh.send({ embeds: [embed] }); return message.reply(`✅ Check in Mod-Kanal gesendet.`); } else return message.reply({ embeds: [embed] });
     }
 
     if (['!addtime', '!removetime', '!resettime'].includes(command) && message.channel.id === TIME_MOD_CHANNEL_ID && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
@@ -345,26 +346,42 @@ client.on('messageCreate', async (message) => {
         for (const u of await StreamUser.find({ guildId: message.guild.id })) await syncUserRoles(u); return message.reply(`✅ Sync ok.`);
     }
 
+    // 🔥 VERIFY COMMAND WIEDER SCHÖN
     if (command === '!verify' && message.channel.id === VERIFY_CHANNEL_ID) {
         await message.delete().catch(()=>{}); const p = args.slice(1).join(" "); if(!p) return message.channel.send(`⚠️ Provider angeben!`).then(m=>setTimeout(()=>m.delete(),5000));
         const modCh = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
-        if (modCh) await modCh.send({ embeds: [new EmbedBuilder().setTitle('🎰 Neue Verifizierung').setDescription(`**User:** ${message.author}\n**Anbieter:** ${p}`).setColor('#f1c40f')], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`verify_accept_${message.author.id}_${p}`).setLabel('✅ Akzeptieren').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`verify_deny_${message.author.id}_${p}`).setLabel('❌ Ablehnen').setStyle(ButtonStyle.Danger))] });
+        if (modCh) await modCh.send({ embeds: [new EmbedBuilder().setTitle('🎰 Neue Casino-Verifizierung').setDescription(`**User:** ${message.author} (${message.author.tag})\n**Möchte verifiziert werden für:** ${p}`).setColor('#f1c40f').setThumbnail(message.author.displayAvatarURL()).setTimestamp()], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`verify_accept_${message.author.id}_${p}`).setLabel('✅ Akzeptieren & Rolle geben').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`verify_deny_${message.author.id}_${p}`).setLabel('❌ Ablehnen').setStyle(ButtonStyle.Danger))] });
         message.channel.send(`✅ Anfrage gesendet!`).then(m=>setTimeout(()=>m.delete(),3000));
     }
 
+    // 🔥 RANK COMMAND WIEDER SCHÖN (MIT FORTSCHRITTSBALKEN)
     if (command === '!rank' && message.channel.id === VERIFY_CHANNEL_ID) {
         const u = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
         const mins = (u?.totalMinutes || 0) + (u?.isStreaming && u?.lastStreamStart ? Math.floor((Date.now() - u.lastStreamStart)/60000) : 0);
-        if (mins === 0) return message.channel.send({ embeds: [new EmbedBuilder().setTitle('Kein Rang').setDescription('Du hast noch keine Zeit.').setColor('#ff4747')] });
-        const cRank = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1]; const nRank = ranks[ranks.indexOf(cRank) - 1];
-        const embed = new EmbedBuilder().setAuthor({ name: `Status: ${message.author.username}`, iconURL: message.author.displayAvatarURL() }).setTitle(`🎰 ${cRank.name}`).setColor(cRank.color).addFields({ name: '⌛ Zeit', value: `\`${Math.floor(mins/60)}h ${mins%60}m\``, inline: true });
-        if (nRank) embed.addFields({ name: `Next: ${nRank.name}`, value: `Noch \`${Math.floor((nRank.min - mins)/60)}h ${(nRank.min - mins)%60}m\`` });
+        const dN = message.member ? message.member.displayName : message.author.username;
+
+        if (mins === 0) return message.channel.send({ embeds: [new EmbedBuilder().setAuthor({ name: `Status für ${dN}`, iconURL: message.author.displayAvatarURL() }).setTitle('🎰 Noch kein Rang verfügbar').setColor('#ff4747').setThumbnail(message.author.displayAvatarURL()).setDescription('Du hast bisher noch keine Zeit auf dem Konto. Starte einen Stream mit Zuschauern, um deinen ersten Rang freizuschalten!').addFields({ name: '⌛ Gesamtzeit', value: '`0h 0m`', inline: true }, { name: '🏆 Rang', value: 'Keiner', inline: true }).setFooter({ text: 'Lass die Walzen glühen! 🎰', iconURL: client.user.displayAvatarURL() }).setTimestamp()] });
+        
+        const cR = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1]; 
+        const nR = ranks[ranks.indexOf(cR) - 1];
+
+        const embed = new EmbedBuilder().setAuthor({ name: `Juicer Status für ${dN}`, iconURL: message.author.displayAvatarURL() }).setTitle(`🎰 ${cR.name}`).setColor(cR.color).setThumbnail(message.author.displayAvatarURL()).addFields({ name: '⌛ Gesamtzeit', value: `\`${Math.floor(mins/60)}h ${mins%60}m\``, inline: true }, { name: '🏆 Aktueller Rang', value: `**${cR.name}**`, inline: true });
+        
+        if (nR) {
+            const p = Math.min(Math.floor((mins / nR.min) * 100), 100);
+            const fB = Math.round((p / 100) * 10);
+            const bar = '🟩'.repeat(fB) + '⬛'.repeat(10 - fB);
+            embed.addFields({ name: '\u200B', value: '\u200B' }, { name: `Nächstes Ziel: ${nR.name}`, value: `${bar} **${p}%**` }, { name: 'Fehlende Zeit', value: `Noch \`${Math.floor((nR.min - mins)/60)}h ${(nR.min - mins)%60}m\` bis zum nächsten Level-Up!` });
+        } else { embed.addFields({ name: '🌟 Maximum erreicht', value: 'Du bist eine absolute Legende!' }); }
+        
+        embed.setFooter({ text: 'Bleib dran! 🎰', iconURL: client.user.displayAvatarURL() }).setTimestamp();
         message.channel.send({ embeds: [embed] });
     }
 });
 
 async function handleStreamStart(userId, guildId, username, avatarURL) {
-    const u = await StreamUser.findOne({ userId, guildId }); if (u?.isStreaming) return;
+    const existing = await StreamUser.findOne({ userId, guildId }); if (existing && existing.isStreaming) return; 
+    log(`🟢 START: ${username}`);
     await StreamUser.findOneAndUpdate({ userId, guildId }, { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL }, { upsert: true });
     client.channels.cache.get(STREAM_LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder().setTitle('🟢 Stream Start').setDescription(`<@${userId}>`).setColor('#2ecc71')] }).catch(()=>{});
 }
@@ -374,7 +391,7 @@ async function handleStreamStop(userId, guildId, isAuto = false) {
     if (u?.isStreaming) {
         const m = Math.floor((Date.now() - u.lastStreamStart) / 60000);
         u.totalMinutes += Math.max(0, m); u.monthlyMinutes += Math.max(0, m); u.isStreaming = false; u.lastStreamStart = null; await u.save();
-        client.channels.cache.get(STREAM_LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder().setTitle(isAuto ? '🛡️ Auto-Stopp' : '🔴 Stream Stopp').setDescription(`<@${userId}>\nDauer: ${m} Min.`).setColor('#e74c3c')] }).catch(()=>{});
+        client.channels.cache.get(STREAM_LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder().setTitle(isAuto ? '🛡️ Auto-Stopp' : '🔴 Stream Beendet').setDescription(`User: <@${userId}>\nDauer: ${m} Min.`).setColor('#e74c3c')] }).catch(()=>{});
     }
 }
 
@@ -452,6 +469,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// 🔥 LEVEL UP EMBED WIEDER SCHÖN
 setInterval(async () => {
     const now = Date.now();
     for (const u of await StreamUser.find({})) {
@@ -463,7 +481,22 @@ setInterval(async () => {
         const mins = u.totalMinutes + (u.isStreaming && u.lastStreamStart ? Math.floor((now - u.lastStreamStart) / 60000) : 0);
         const cRank = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1];
         if (u.lastNotifiedRank !== cRank.name) {
-            if (ranks.findIndex(r=>r.name===cRank.name) < ranks.findIndex(r=>r.name===u.lastNotifiedRank)) client.channels.cache.get(VERIFY_CHANNEL_ID)?.send({ content: `<@${u.userId}> Level Up: **${cRank.name}**!` }).catch(()=>{});
+            if (ranks.findIndex(r=>r.name===cRank.name) < ranks.findIndex(r=>r.name===u.lastNotifiedRank)) {
+                const embed = new EmbedBuilder()
+                    .setAuthor({ name: 'LEVEL UP! 🎰' })
+                    .setTitle(`🎉 ${u.username} ist aufgestiegen!`)
+                    .setDescription(`Wahnsinn! Du hast den Rang **${cRank.name}** erreicht.`)
+                    .setColor(cRank.color)
+                    .setThumbnail(u.avatar || null)
+                    .addFields(
+                        { name: 'Vorher', value: u.lastNotifiedRank || "Keiner", inline: true },
+                        { name: 'Jetzt', value: `**${cRank.name}**`, inline: true },
+                        { name: 'Gesamtzeit', value: `\`${Math.floor(mins / 60)}h ${mins % 60}m\`` }
+                    )
+                    .setFooter({ text: 'Die Walzen stehen niemals still...' })
+                    .setTimestamp();
+                client.channels.cache.get(VERIFY_CHANNEL_ID)?.send({ content: `<@${u.userId}>`, embeds: [embed] }).catch(()=>{});
+            }
             u.lastNotifiedRank = cRank.name; await u.save();
         }
     }
@@ -488,6 +521,7 @@ client.once('ready', async () => {
     }, 5000); 
 });
 
+// --- BIG BROTHER LOGS ---
 setInterval(async () => { await ServerLog.deleteMany({ timestamp: { $lt: new Date(Date.now() - 1209600000) } }); }, 86400000);
 client.on('messageDelete', async m => { if(!m.partial && !m.author?.bot) saveLog('MSG_DELETE', m.author.username, m.author.id, `Gelöscht:\n"${m.content}"`, m.channel.name); });
 client.on('messageUpdate', async (o, n) => { if(!o.partial && !o.author?.bot && o.content!==n.content) saveLog('MSG_EDIT', o.author.username, o.author.id, `Alt: "${o.content}"\nNeu: "${n.content}"`, o.channel.name); });
