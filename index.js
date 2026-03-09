@@ -173,7 +173,14 @@ async function getHuntUserData(userId, reqUser) {
     if (userData && userData.totalMinutes > 0) {
         rank = ranks.find(r => userData.totalMinutes >= r.min) || ranks[ranks.length - 1];
     }
-    const avatarUrl = reqUser.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${reqUser.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png';
+    
+    let avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+    if (reqUser && reqUser.avatar) {
+        avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${reqUser.avatar}.png`;
+    } else if (userData && userData.avatar) {
+        avatarUrl = userData.avatar;
+    }
+    
     return { rank, avatarUrl };
 }
 
@@ -981,3 +988,4 @@ client.on('guildMemberRemove', (m) => saveLog('USER_LEAVE', m.user.username, m.u
 mongoose.connect(process.env.MONGO_URI).then(() => log('✅ MongoDB verbunden')).catch(e => log(`❌ MongoDB Fehler: ${e.message}`));
 app.listen(process.env.PORT || 3000, '0.0.0.0', () => log(`🌐 Webserver läuft`));
 client.login(process.env.TOKEN);
+
