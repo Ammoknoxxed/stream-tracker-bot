@@ -10,15 +10,9 @@ const cron = require('node-cron');
 const multer = require('multer');
 require('dotenv').config();
 
-function log(message) {
-    const now = new Date();
-    const time = now.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
-    console.log(`[${time}] ${message}`);
-}
-
+function log(m) { console.log(`[${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}] ${m}`); }
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- 0. KONFIGURATION YEE ---
 const ranks = [
     { min: 60000, name: "GOD OF MAX WIN", color: "#ffffff", img: "19.png" },
     { min: 45000, name: "Casino Imperator", color: "#ff4500", img: "18.png" },
@@ -50,259 +44,87 @@ const BONUS_HUNT_CHANNEL_ID = '1478547866204110868';
 const FAQ_CHANNEL_ID = '1480437392405172254';       
 const MOD_FAQ_CHANNEL_ID = '1480438468550066206';
 
-// --- 1. DATENBANK MODELLE ---
-const guildConfigSchema = new mongoose.Schema({
-    guildId: String,
-    rewards: [{ minutesRequired: Number, roleId: String, roleName: String }],
-    allowedChannels: [String]
-});
-const GuildConfig = mongoose.model('GuildConfig', guildConfigSchema);
+const GuildConfig = mongoose.model('GuildConfig', new mongoose.Schema({ guildId: String, rewards: [{ minutesRequired: Number, roleId: String, roleName: String }], allowedChannels: [String] }));
+const StreamUser = mongoose.model('StreamUser', new mongoose.Schema({ userId: String, guildId: String, username: String, avatar: String, totalMinutes: { type: Number, default: 0 }, monthlyMinutes: { type: Number, default: 0 }, lastStreamStart: Date, isStreaming: { type: Boolean, default: false }, lastNotifiedRank: { type: String, default: "Casino Gast" } }));
+const Warning = mongoose.model('Warning', new mongoose.Schema({ userId: String, guildId: String, moderatorId: String, reason: String, timestamp: { type: Date, default: Date.now } }));
+const BonusHunt = mongoose.model('BonusHunt', new mongoose.Schema({ userId: String, username: String, threadId: String, summaryMsgId: String, startBalance: Number, isActive: { type: Boolean, default: true }, slots: [{ name: String, bet: Number, value: { type: Number, default: 0 }, currentBalance: { type: Number, default: 0 }, win: { type: Number, default: 0 }, isOpened: { type: Boolean, default: false }, imageUrl: { type: String, default: null } }], createdAt: { type: mongoose.Schema.Types.Mixed, default: Date.now } }));
+const ServerLog = mongoose.model('ServerLog', new mongoose.Schema({ action: String, username: String, userId: String, details: String, channel: String, timestamp: { type: Date, default: Date.now } }));
+const FaqEntry = mongoose.model('FaqEntry', new mongoose.Schema({ guildId: String, question: String, answer: String, createdAt: { type: Date, default: Date.now } }));
 
-const streamUserSchema = new mongoose.Schema({
-    userId: String,
-    guildId: String,
-    username: String,
-    avatar: String,
-    totalMinutes: { type: Number, default: 0 },
-    monthlyMinutes: { type: Number, default: 0 }, 
-    lastStreamStart: Date,
-    isStreaming: { type: Boolean, default: false },
-    lastNotifiedRank: { type: String, default: "Casino Gast" }
-});
-const StreamUser = mongoose.model('StreamUser', streamUserSchema);
+async function saveLog(action, username, userId, details, channel = 'System') { try { await ServerLog.create({ action, username, userId, details, channel }); } catch (e) {} }
 
-const warningSchema = new mongoose.Schema({
-    userId: String,
-    guildId: String,
-    moderatorId: String,
-    reason: String,
-    timestamp: { type: Date, default: Date.now }
-});
-const Warning = mongoose.model('Warning', warningSchema);
-
-const slotEntrySchema = new mongoose.Schema({
-    name: String,
-    bet: Number,
-    value: { type: Number, default: 0 }, 
-    currentBalance: { type: Number, default: 0 }, 
-    win: { type: Number, default: 0 },
-    isOpened: { type: Boolean, default: false },
-    imageUrl: { type: String, default: null } 
-});
-
-const bonusHuntSchema = new mongoose.Schema({
-    userId: String,
-    username: String,
-    threadId: String,
-    summaryMsgId: String,
-    startBalance: Number,
-    isActive: { type: Boolean, default: true },
-    slots: [slotEntrySchema],
-    createdAt: { type: Date, default: Date.now }
-});
-const BonusHunt = mongoose.model('BonusHunt', bonusHuntSchema);
-
-const logSchema = new mongoose.Schema({
-    action: String,       
-    username: String,     
-    userId: String,       
-    details: String,      
-    channel: String,      
-    timestamp: { type: Date, default: Date.now }
-});
-const ServerLog = mongoose.model('ServerLog', logSchema);
-
-async function saveLog(action, username, userId, details, channel = 'System') {
-    try { await ServerLog.create({ action, username, userId, details, channel }); } catch (e) { console.error("Log Error:", e); }
-}
-
-const faqEntrySchema = new mongoose.Schema({
-    guildId: String,
-    question: String,
-    answer: String,
-    createdAt: { type: Date, default: Date.now }
-});
-const FaqEntry = mongoose.model('FaqEntry', faqEntrySchema);
-
-// --- FAQ MASTER-BLOCK UPDATER ---
 async function refreshFaqChannel(client, guildId) {
     const faqChannel = client.channels.cache.get(FAQ_CHANNEL_ID);
     if (!faqChannel) return;
-
     const faqs = await FaqEntry.find({ guildId }).sort({ createdAt: 1 });
-    
     try {
-        const fetched = await faqChannel.messages.fetch({ limit: 50 });
-        await faqChannel.bulkDelete(fetched, true);
-        const fetchedAfter = await faqChannel.messages.fetch({ limit: 50 });
-        for (const msg of fetchedAfter.values()) {
-            await msg.delete().catch(() => {});
-        }
-    } catch(e) { log("⚠️ Konnte FAQ-Channel nicht vollständig leeren: " + e.message); }
+        await faqChannel.bulkDelete(await faqChannel.messages.fetch({ limit: 50 }), true);
+        const fA = await faqChannel.messages.fetch({ limit: 50 });
+        for (const msg of fA.values()) await msg.delete().catch(() => {});
+    } catch(e) {}
 
-    const introEmbed = new EmbedBuilder()
-        .setTitle('📚 Community FAQ & Hilfe')
-        .setDescription('Hier findest du detaillierte Antworten auf die häufigsten Fragen aus der Community.')
-        .setColor('#fbbf24');
-    await faqChannel.send({ embeds: [introEmbed] });
+    await faqChannel.send({ embeds: [new EmbedBuilder().setTitle('📚 Community FAQ & Hilfe').setDescription('Hier findest du detaillierte Antworten auf die häufigsten Fragen aus der Community.').setColor('#fbbf24')] });
 
     for (let i = 0; i < faqs.length; i += 5) {
-        const chunk = faqs.slice(i, i + 5);
-        let descriptionText = "";
-        chunk.forEach(faq => { descriptionText += `**❓ ${faq.question}**\n> 💬 ${faq.answer}\n\n──────────────────────────────\n\n`; });
-        descriptionText = descriptionText.replace(/\n\n──────────────────────────────\n\n$/, '');
-        const embed = new EmbedBuilder().setColor('#2b2d31').setDescription(descriptionText);
-        await faqChannel.send({ embeds: [embed] });
+        let desc = faqs.slice(i, i + 5).map(f => `**❓ ${f.question}**\n> 💬 ${f.answer}\n\n`).join('──────────────────────────────\n\n').replace(/\n\n──────────────────────────────\n\n$/, '');
+        await faqChannel.send({ embeds: [new EmbedBuilder().setColor('#2b2d31').setDescription(desc)] });
     }
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ask_faq_btn').setLabel('🙋‍♂️ Eigene Frage stellen').setStyle(ButtonStyle.Primary)
-    );
-
-    const actionEmbed = new EmbedBuilder()
-        .setDescription('**Deine Frage ist nicht dabei?**\nKlicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!')
-        .setColor('#3498db');
-
-    await faqChannel.send({ embeds: [actionEmbed], components: [row] });
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ask_faq_btn').setLabel('🙋‍♂️ Eigene Frage stellen').setStyle(ButtonStyle.Primary));
+    await faqChannel.send({ embeds: [new EmbedBuilder().setDescription('**Deine Frage ist nicht dabei?**\nKlicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!').setColor('#3498db')], components: [row] });
 }
 
-// --- HELPER FÜR BONUS HUNT EMBED ---
 async function getHuntUserData(userId, reqUser) {
-    const userData = await StreamUser.findOne({ userId });
-    let rank = null;
-    if (userData && userData.totalMinutes > 0) {
-        rank = ranks.find(r => userData.totalMinutes >= r.min) || ranks[ranks.length - 1];
-    }
-    
-    let avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
-    if (reqUser && reqUser.avatar) {
-        avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${reqUser.avatar}.png`;
-    } else if (userData && userData.avatar) {
-        avatarUrl = userData.avatar;
-    }
-    
+    const u = await StreamUser.findOne({ userId });
+    let rank = u && u.totalMinutes > 0 ? (ranks.find(r => u.totalMinutes >= r.min) || ranks[ranks.length - 1]) : null;
+    let avatarUrl = reqUser?.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${reqUser.avatar}.png` : (u?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png');
     return { rank, avatarUrl };
 }
 
-function buildHuntEmbed(hunt, avatarUrl = null, rankColor = null) {
-    const lastBal = hunt.slots.length > 0 ? hunt.slots[hunt.slots.length - 1].currentBalance : hunt.startBalance;
-    const totalInvest = hunt.startBalance - lastBal; 
-    const totalWert = hunt.slots.reduce((acc, s) => acc + s.value, 0); 
-    const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
-    const profit = totalWin - totalInvest;
-    
-    let slotList = hunt.slots.map((s, i) => {
-        let status = s.isOpened ? `✅ **${s.win.toFixed(2)}€** \`(${(s.win/s.bet).toFixed(2)}x)\`` : '⏳ *Wartet...*';
-        return `**${i+1}.** ${s.name} (Bet: \`${s.bet.toFixed(2)}€\`, Wert: \`${s.value.toFixed(2)}€\`) ➔ ${status}`;
-    }).join('\n');
-    
-    if (!slotList) slotList = "Noch keine Slots gesammelt. Sammel fleißig! 🍀";
-
-    const embed = new EmbedBuilder()
-        .setTitle(`🎰 Live Bonus Hunt: ${hunt.username}`)
-        .setDescription(`${slotList}`)
-        .addFields(
-            { name: '💰 Start', value: `\`${hunt.startBalance.toFixed(2)}€\``, inline: true },
-            { name: '📉 Investiert', value: `\`${totalInvest.toFixed(2)}€\``, inline: true },
-            { name: '💎 Total Wert', value: `\`${totalWert.toFixed(2)}€\``, inline: true },
-            { name: '🏆 Gewinn', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
-            { name: '📈 Netto-Profit', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
-        )
-        .setColor(rankColor || '#fbbf24')
-        .setFooter({ text: 'Juicer Bonus Hunt Tracker • Live Updates' })
-        .setTimestamp();
-
-    if (avatarUrl) embed.setThumbnail(avatarUrl);
-    return embed;
+function buildHuntEmbed(h, avatarUrl = null, rankColor = null) {
+    const lBal = h.slots.length ? h.slots[h.slots.length - 1].currentBalance : h.startBalance;
+    const inv = h.startBalance - lBal, val = h.slots.reduce((a, s) => a + s.value, 0), win = h.slots.reduce((a, s) => a + s.win, 0), prof = win - inv;
+    let list = h.slots.map((s, i) => `**${i+1}.** ${s.name} (Bet: \`${s.bet.toFixed(2)}€\`, Wert: \`${s.value.toFixed(2)}€\`) ➔ ${s.isOpened ? `✅ **${s.win.toFixed(2)}€** \`(${(s.win/s.bet).toFixed(2)}x)\`` : '⏳ *Wartet...*'}`).join('\n') || "Noch keine Slots gesammelt. Sammel fleißig! 🍀";
+    const e = new EmbedBuilder().setTitle(`🎰 Live Bonus Hunt: ${h.username}`).setDescription(list).addFields({ name: '💰 Start', value: `\`${h.startBalance.toFixed(2)}€\``, inline: true }, { name: '📉 Investiert', value: `\`${inv.toFixed(2)}€\``, inline: true }, { name: '💎 Total Wert', value: `\`${val.toFixed(2)}€\``, inline: true }, { name: '🏆 Gewinn', value: `\`${win.toFixed(2)}€\``, inline: true }, { name: '📈 Netto-Profit', value: `\`${prof >= 0 ? '+' : ''}${prof.toFixed(2)}€\``, inline: true }).setColor(rankColor || '#fbbf24').setFooter({ text: 'Juicer Bonus Hunt Tracker • Live Updates' }).setTimestamp();
+    if (avatarUrl) e.setThumbnail(avatarUrl); return e;
 }
 
-// --- 2. BOT SETUP ---
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildMembers, 
-        GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration 
-    ],
-    partials: [Partials.GuildMember, Partials.User, Partials.Presence, Partials.Message, Partials.Channel] 
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildModeration], partials: [Partials.GuildMember, Partials.User, Partials.Presence, Partials.Message, Partials.Channel] });
 
 function getSortedUsers(users, sortKey = 'effectiveTotal') {
     const now = new Date();
-    return users.map(user => {
-        const u = user.toObject();
-        u.effectiveTotal = u.totalMinutes;
-        u.effectiveMonthly = u.monthlyMinutes || 0;
-        if (u.isStreaming && u.lastStreamStart) {
-            const diff = Math.floor((now - new Date(u.lastStreamStart)) / 60000);
-            if (diff > 0) { u.effectiveTotal += diff; u.effectiveMonthly += diff; }
-        }
-        return u;
+    return users.map(u => {
+        const obj = u.toObject(); obj.effectiveTotal = obj.totalMinutes; obj.effectiveMonthly = obj.monthlyMinutes || 0;
+        if (obj.isStreaming && obj.lastStreamStart) { const diff = Math.floor((now - new Date(obj.lastStreamStart)) / 60000); if (diff > 0) { obj.effectiveTotal += diff; obj.effectiveMonthly += diff; } }
+        return obj;
     }).sort((a, b) => b[sortKey] - a[sortKey]);
 }
 
-// 🔥 N+1 QUERY FIX
 function enrichUserData(guild, sortedUsers) {
-    const membersCache = guild.members.cache;
+    const cache = guild.members.cache;
     return sortedUsers.map(u => {
-        const member = membersCache.get(u.userId);
-        let finalDisplayName = u.username;
-        let finalAvatar = u.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
-        if (member) {
-            finalDisplayName = member.displayName;
-            finalAvatar = member.displayAvatarURL() || finalAvatar;
-        } 
-        return { ...u, displayName: finalDisplayName, avatar: finalAvatar };
+        const m = cache.get(u.userId);
+        return { ...u, displayName: m?.displayName || u.username, avatar: m?.displayAvatarURL() || u.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png' };
     });
 }
 
 async function syncUserRoles(userData, now = new Date()) {
     try {
-        let effectiveMinutes = userData.totalMinutes;
-        if (userData.isStreaming && userData.lastStreamStart) {
-            const currentDiff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
-            if (currentDiff > 0) effectiveMinutes += currentDiff;
-        }
-
+        let mins = userData.totalMinutes + (userData.isStreaming && userData.lastStreamStart ? Math.max(0, Math.floor((now - new Date(userData.lastStreamStart)) / 60000)) : 0);
         const config = await GuildConfig.findOne({ guildId: userData.guildId });
-        if (!config || !config.rewards || config.rewards.length === 0) return false;
-
-        const guild = client.guilds.cache.get(userData.guildId);
-        if (!guild) return false;
-
-        const member = await guild.members.fetch(userData.userId).catch(() => null);
+        if (!config?.rewards?.length) return false;
+        const member = await client.guilds.cache.get(userData.guildId)?.members.fetch(userData.userId).catch(() => null);
         if (!member) return false;
-
-        const earnedRewards = config.rewards
-            .filter(r => effectiveMinutes >= r.minutesRequired)
-            .sort((a, b) => b.minutesRequired - a.minutesRequired);
-
-        const topReward = earnedRewards[0];
-
-        if (topReward) {
-            if (!member.roles.cache.has(topReward.roleId)) {
-                await member.roles.add(topReward.roleId).catch(e => log(`⚠️ Rechte-Fehler (+): ${e.message}`));
-                log(`🛡️ ROLLEN-UPDATE: + "${topReward.roleName}" für ${userData.username} hinzugefügt.`);
-            }
-            for (const reward of config.rewards) {
-                if (reward.roleId !== topReward.roleId && member.roles.cache.has(reward.roleId)) {
-                    await member.roles.remove(reward.roleId).catch(e => log(`⚠️ Rechte-Fehler (-): ${e.message}`));
-                    log(`🛡️ ROLLEN-UPDATE: - "${reward.roleName}" von ${userData.username} entfernt.`);
-                }
-            }
+        const top = config.rewards.filter(r => mins >= r.minutesRequired).sort((a, b) => b.minutesRequired - a.minutesRequired)[0];
+        if (top) {
+            if (!member.roles.cache.has(top.roleId)) { await member.roles.add(top.roleId).catch(()=>{}); log(`🛡️ + "${top.roleName}" für ${userData.username}`); }
+            for (const r of config.rewards) if (r.roleId !== top.roleId && member.roles.cache.has(r.roleId)) { await member.roles.remove(r.roleId).catch(()=>{}); log(`🛡️ - "${r.roleName}" von ${userData.username}`); }
         } else {
-            for (const reward of config.rewards) {
-                if (member.roles.cache.has(reward.roleId)) {
-                    await member.roles.remove(reward.roleId).catch(e => log(`⚠️ Rechte-Fehler (Reset): ${e.message}`));
-                    log(`🛡️ ROLLEN-UPDATE: - "${reward.roleName}" von ${userData.username} entfernt (Zeit reicht nicht mehr).`);
-                }
-            }
+            for (const r of config.rewards) if (member.roles.cache.has(r.roleId)) { await member.roles.remove(r.roleId).catch(()=>{}); log(`🛡️ - "${r.roleName}" von ${userData.username} (Reset)`); }
         }
         return true;
-    } catch (err) { 
-        log(`❌ FEHLER bei syncUserRoles (${userData.username}): ${err.message}`); return false; 
-    }
+    } catch (e) { return false; }
 }
 
-// --- EXPRESS / DASHBOARD SETUP ---
 const app = express();
 app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
@@ -311,645 +133,354 @@ app.use(express.urlencoded({ extended: true }));
 
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((obj, done) => done(null, obj));
-passport.use(new Strategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: process.env.CALLBACK_URL,
-    scope: ['identify', 'guilds'],
-    proxy: true
-}, (accessToken, refreshToken, profile, done) => done(null, profile)));
+passport.use(new Strategy({ clientID: process.env.CLIENT_ID, clientSecret: process.env.CLIENT_SECRET, callbackURL: process.env.CALLBACK_URL, scope: ['identify', 'guilds'], proxy: true }, (a, r, p, d) => d(null, p)));
 
-// --- UPDATED SESSION CONFIG (MONGO STORE) ---
-app.use(session({ 
-    secret: 'stream-tracker-secret', 
-    resave: false, 
-    saveUninitialized: false, 
-    store: MongoStore.create({ 
-        mongoUrl: process.env.MONGO_URI, 
-        collectionName: 'sessions' 
-    }),
-    cookie: { secure: 'auto', maxAge: 1000 * 60 * 60 * 24 * 7 } 
-}));
+app.use(session({ secret: 'stream-tracker', resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: process.env.MONGO_URI, collectionName: 'sessions' }), cookie: { secure: 'auto', maxAge: 604800000 } }));
+app.use(passport.initialize()); app.use(passport.session());
 
-app.use(passport.initialize());
-app.use(passport.session());
-
-// --- WEB ROUTES ---
 app.get('/', (req, res) => res.render('index'));
-
 app.get('/leaderboard/:guildId', async (req, res) => {
     try {
-        const guildId = req.params.guildId;
-        const guild = client.guilds.cache.get(guildId);
-        if (!guild) return res.status(404).send("Server nicht gefunden.");
-        
-        const users = await StreamUser.find({ guildId });
-        
-        const sortedAllTime = getSortedUsers(users, 'effectiveTotal');
-        const enrichedAllTime = enrichUserData(guild, sortedAllTime);
-
-        const sortedMonthly = getSortedUsers(users, 'effectiveMonthly').filter(u => u.effectiveMonthly > 0 || u.isStreaming);
-        const enrichedMonthly = enrichUserData(guild, sortedMonthly); 
-
-        res.render('leaderboard_public', { guild, allTimeLeaderboard: enrichedAllTime, monthlyLeaderboard: enrichedMonthly, monthName: "Gesamtstatistik", ranks, loggedInUser: req.user });
-    } catch (err) { console.error(err); res.status(500).send("Fehler."); }
+        const guild = client.guilds.cache.get(req.params.guildId); if (!guild) return res.status(404).send("Server nicht gefunden.");
+        const users = await StreamUser.find({ guildId: req.params.guildId });
+        res.render('leaderboard_public', { guild, allTimeLeaderboard: enrichUserData(guild, getSortedUsers(users, 'effectiveTotal')), monthlyLeaderboard: enrichUserData(guild, getSortedUsers(users, 'effectiveMonthly').filter(u => u.effectiveMonthly > 0 || u.isStreaming)), monthName: "Gesamtstatistik", ranks, loggedInUser: req.user });
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
 app.get('/login', (req, res, next) => {
-    let backURL = req.query.returnTo || req.headers.referer || '/';
-    try { if (backURL.startsWith('http')) backURL = new URL(backURL).pathname; } catch (e) {}
-    if (backURL.includes('/login')) backURL = '/';
-    const stateString = Buffer.from(backURL).toString('base64');
-    passport.authenticate('discord', { state: stateString })(req, res, next);
+    let b = req.query.returnTo || req.headers.referer || '/'; try { if (b.startsWith('http')) b = new URL(b).pathname; } catch(e){}
+    passport.authenticate('discord', { state: Buffer.from(b.includes('/login') ? '/' : b).toString('base64') })(req, res, next);
 });
 
-app.get('/logout', (req, res, next) => {
-    let returnTo = req.query.returnTo || '/';
-    if (!returnTo.startsWith('/')) returnTo = '/';
-    req.logout(function(err) {
-        if (err) { log(`❌ LOGOUT FEHLER: ${err.message}`); return next(err); }
-        req.session.destroy(() => { res.clearCookie('connect.sid'); res.redirect(returnTo); });
-    });
-});
+app.get('/logout', (req, res) => { let r = req.query.returnTo || '/'; req.logout(() => req.session.destroy(() => { res.clearCookie('connect.sid'); res.redirect(r.startsWith('/') ? r : '/'); })); });
 
 app.get('/auth/discord/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => {
-    if (req.user) log(`🔑 LOGIN: ${req.user.username} (ID: ${req.user.id}) hat sich eingeloggt.`);
-    let redirectTo = '/dashboard';
-    if (req.query.state) {
-        try {
-            const decodedState = Buffer.from(req.query.state, 'base64').toString('utf-8');
-            if (decodedState && decodedState.startsWith('/')) redirectTo = decodedState;
-        } catch(e) {}
-    }
-    if (redirectTo === '/') redirectTo = '/dashboard';
-    res.redirect(redirectTo);
+    let r = '/dashboard'; try { if (req.query.state) r = Buffer.from(req.query.state, 'base64').toString('utf-8'); } catch(e){}
+    res.redirect(r.startsWith('/') && r !== '/' ? r : '/dashboard');
 });
 
-// --- BONUS HUNT ROUTEN ---
-app.get('/bonushunt', async (req, res) => {
-    let activeHunt = null;
-    if (req.isAuthenticated()) activeHunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
-    res.render('bonushunt', { user: req.user, hunt: activeHunt });
-});
+app.get('/bonushunt', async (req, res) => res.render('bonushunt', { user: req.user, hunt: req.isAuthenticated() ? await BonusHunt.findOne({ userId: req.user.id, isActive: true }) : null }));
 
 app.post('/bonushunt/start', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login');
-    const startBalance = parseFloat(req.body.startBalance);
     try {
-        const huntChannel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
-        if (!huntChannel) return res.status(500).send("Discord Channel nicht gefunden.");
-
-        const newHunt = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance });
+        const ch = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID); if (!ch) return res.status(500).send("Channel nicht gefunden.");
+        const h = new BonusHunt({ userId: req.user.id, username: req.user.username, startBalance: parseFloat(req.body.startBalance) });
         const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
-        const startEmbed = buildHuntEmbed(newHunt, avatarUrl, rank ? rank.color : null);
-
-        let messagePayload = { content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀 Mögen die Multiplikatoren mit dir sein!`, embeds: [startEmbed] };
-
-        if (rank && rank.img) {
-            const rankImagePath = path.join(__dirname, 'public', 'images', 'ranks', rank.img);
-            messagePayload.files = [new AttachmentBuilder(rankImagePath, { name: 'rankpreview.png' })];
-        }
-
-        const forumPost = await huntChannel.threads.create({
-            name: `🎰 Hunt: ${req.user.username} | ${startBalance}€`, autoArchiveDuration: 1440, message: messagePayload, reason: 'Neuer Bonus Hunt gestartet'
-        });
-        
-        newHunt.threadId = forumPost.id;
-        newHunt.summaryMsgId = forumPost.id; 
-        await newHunt.save();
-        res.redirect('/bonushunt');
-    } catch (err) { console.error(err); res.status(500).send("Fehler beim Starten des Forum-Posts."); }
+        let p = { content: `Viel Glück beim Hunt, <@${req.user.id}>! 🍀`, embeds: [buildHuntEmbed(h, avatarUrl, rank?.color)] };
+        if (rank?.img) p.files = [new AttachmentBuilder(path.join(__dirname, 'public', 'images', 'ranks', rank.img), { name: 'rankpreview.png' })];
+        const t = await ch.threads.create({ name: `🎰 Hunt: ${req.user.username} | ${h.startBalance}€`, autoArchiveDuration: 1440, message: p });
+        h.threadId = t.id; h.summaryMsgId = t.id; await h.save(); res.redirect('/bonushunt');
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
 app.post('/bonushunt/add', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login');
-    const { slotName, betSize, bonusValue, currentBalance } = req.body;
-
     try {
-        const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
-        if (!hunt) return res.redirect('/bonushunt');
-
-        hunt.slots.push({ name: slotName, bet: parseFloat(betSize), value: parseFloat(bonusValue), currentBalance: parseFloat(currentBalance) });
-        await hunt.save();
-
-        const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
-        const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
-        if (thread) {
+        const h = await BonusHunt.findOne({ userId: req.user.id, isActive: true }); if (!h) return res.redirect('/bonushunt');
+        h.slots.push({ name: req.body.slotName, bet: parseFloat(req.body.betSize), value: parseFloat(req.body.bonusValue), currentBalance: parseFloat(req.body.currentBalance) }); await h.save();
+        const t = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID)?.threads.cache.get(h.threadId);
+        if (t) {
             const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
-            const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
-            if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt, avatarUrl, rank ? rank.color : null)] });
-            await thread.send(`🎰 **Slot eingesammelt:** \`${slotName}\` (Einsatz: \`${parseFloat(betSize).toFixed(2)}€\`, Restguthaben: \`${parseFloat(currentBalance).toFixed(2)}€\`)`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
+            const m = await t.messages.fetch(h.summaryMsgId).catch(()=>null); if (m) await m.edit({ embeds: [buildHuntEmbed(h, avatarUrl, rank?.color)] });
+            await t.send(`🎰 **${req.body.slotName}** (Einsatz: \`${parseFloat(req.body.betSize).toFixed(2)}€\`, Bal: \`${parseFloat(req.body.currentBalance).toFixed(2)}€\`)`).then(m => setTimeout(()=>m.delete().catch(()=>{}), 5000));
         }
         res.redirect('/bonushunt');
-    } catch (err) { console.error(err); res.status(500).send("Fehler beim Hinzufügen."); }
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
-app.post('/bonushunt/open/:slotId', upload.single('screenshot'), async (req, res) => {
+app.post('/bonushunt/open/:id', upload.single('screenshot'), async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login');
-    const winAmount = parseFloat(req.body.winAmount);
-
     try {
-        const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
-        if (!hunt) return res.redirect('/bonushunt');
-
-        const slot = hunt.slots.id(req.params.slotId);
-        if (slot) {
-            slot.win = winAmount; slot.isOpened = true;
-
-            const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
-            const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
-            
-            if (thread) {
-                const multi = winAmount / slot.bet;
-                let emoji = '✅';
-                if (multi >= 100) emoji = '🔥'; if (multi >= 500) emoji = '🚀'; if (multi >= 1000) emoji = '🤯';
-
-                let messagePayload = { content: `${emoji} **${slot.name}** geöffnet! Gewinn: **${winAmount.toFixed(2)}€** \`(${multi.toFixed(2)}x)\`` };
-                if (req.file) messagePayload.files = [new AttachmentBuilder(req.file.buffer, { name: 'screenshot.png' })];
-
-                const sentMsg = await thread.send(messagePayload);
-                if (req.file && sentMsg.attachments.size > 0) slot.imageUrl = sentMsg.attachments.first().url;
-                await hunt.save();
-
-                const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
-                const msg = await thread.messages.fetch(hunt.summaryMsgId).catch(()=>null);
-                if (msg) await msg.edit({ embeds: [buildHuntEmbed(hunt, avatarUrl, rank ? rank.color : null)] });
-            } else { await hunt.save(); }
+        const h = await BonusHunt.findOne({ userId: req.user.id, isActive: true }); const s = h?.slots.id(req.params.id);
+        if (s) {
+            s.win = parseFloat(req.body.winAmount); s.isOpened = true;
+            const t = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID)?.threads.cache.get(h.threadId);
+            if (t) {
+                const m = s.win / s.bet; let p = { content: `${m >= 1000 ? '🤯' : m >= 500 ? '🚀' : m >= 100 ? '🔥' : '✅'} **${s.name}** geöffnet! Gewinn: **${s.win.toFixed(2)}€** \`(${m.toFixed(2)}x)\`` };
+                if (req.file) p.files = [new AttachmentBuilder(req.file.buffer, { name: 'screenshot.png' })];
+                const sM = await t.send(p); if (req.file && sM.attachments.size) s.imageUrl = sM.attachments.first().url;
+                await h.save(); const { rank, avatarUrl } = await getHuntUserData(req.user.id, req.user);
+                const msg = await t.messages.fetch(h.summaryMsgId).catch(()=>null); if (msg) await msg.edit({ embeds: [buildHuntEmbed(h, avatarUrl, rank?.color)] });
+            } else await h.save();
         }
         res.redirect('/bonushunt');
-    } catch (err) { console.error(err); res.status(500).send("Fehler."); }
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
 app.post('/bonushunt/finish', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/login');
     try {
-        const hunt = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
-        if (!hunt) return res.redirect('/bonushunt');
-
-        hunt.isActive = false; await hunt.save();
-
-        const lastBal = hunt.slots.length > 0 ? hunt.slots[hunt.slots.length - 1].currentBalance : hunt.startBalance;
-        const totalInvest = hunt.startBalance - lastBal; 
-        const totalWin = hunt.slots.reduce((acc, s) => acc + s.win, 0);
-        const profit = totalWin - totalInvest;
-
-        const channel = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID);
-        const thread = channel.threads.cache.get(hunt.threadId) || await channel.threads.fetch(hunt.threadId).catch(()=>null);
-        if (thread) {
-            const { avatarUrl } = await getHuntUserData(req.user.id, req.user);
-            const finalEmbed = new EmbedBuilder()
-                .setTitle(`🏁 Bonus Hunt Beendet!`)
-                .setDescription(`Die Walzen stehen still. Hier ist die Endabrechnung für <@${hunt.userId}>:`)
-                .addFields(
-                    { name: '🎯 Gesamt-Investiert', value: `\`${totalInvest.toFixed(2)}€\``, inline: true },
-                    { name: '🏆 Gesamtgewinn', value: `\`${totalWin.toFixed(2)}€\``, inline: true },
-                    { name: profit >= 0 ? '📈 PROFIT' : '📉 LOSS', value: `\`${profit >= 0 ? '+' : ''}${profit.toFixed(2)}€\``, inline: true }
-                )
-                .setColor(profit >= 0 ? '#2ecc71' : '#e74c3c')
-                .setThumbnail(avatarUrl)
-                .setFooter({ text: 'GG! Bis zum nächsten Mal.' })
-                .setTimestamp();
-            await thread.send({ content: `Der Hunt ist beendet!`, embeds: [finalEmbed] });
-            await thread.setArchived(true);
+        const h = await BonusHunt.findOne({ userId: req.user.id, isActive: true });
+        if (h) {
+            h.isActive = false; await h.save(); const t = client.channels.cache.get(BONUS_HUNT_CHANNEL_ID)?.threads.cache.get(h.threadId);
+            if (t) {
+                const i = h.startBalance - (h.slots.length ? h.slots[h.slots.length - 1].currentBalance : h.startBalance), w = h.slots.reduce((a, s) => a + s.win, 0), p = w - i;
+                const { avatarUrl } = await getHuntUserData(req.user.id, req.user);
+                await t.send({ content: `Der Hunt ist beendet!`, embeds: [new EmbedBuilder().setTitle(`🏁 Bonus Hunt Beendet!`).setDescription(`Endabrechnung für <@${h.userId}>:`).addFields({ name: '🎯 Investiert', value: `\`${i.toFixed(2)}€\``, inline: true }, { name: '🏆 Gewinn', value: `\`${w.toFixed(2)}€\``, inline: true }, { name: p >= 0 ? '📈 PROFIT' : '📉 LOSS', value: `\`${p >= 0 ? '+' : ''}${p.toFixed(2)}€\``, inline: true }).setColor(p >= 0 ? '#2ecc71' : '#e74c3c').setThumbnail(avatarUrl).setTimestamp()] });
+                await t.setArchived(true);
+            }
         }
         res.redirect('/bonushunt');
-    } catch (err) { console.error(err); res.status(500).send("Fehler beim Beenden."); }
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
-app.get('/dashboard', async (req, res) => {
-    if (!req.isAuthenticated()) return res.redirect('/');
-    const adminGuilds = req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8);
-    res.render('dashboard', { user: req.user, guilds: adminGuilds });
-});
-
-app.get('/logs', async (req, res) => {
-    if (!req.isAuthenticated()) return res.redirect('/login?returnTo=/logs');
-    const isAdmin = req.user.guilds.some(g => (g.permissions & 0x8) === 0x8);
-    if (!isAdmin) return res.status(403).send("⛔ Zugriff verweigert. Nur für Administratoren.");
-    const logs = await ServerLog.find().sort({ timestamp: -1 }).limit(500);
-    res.render('logs', { user: req.user, logs });
-});
+app.get('/dashboard', (req, res) => req.isAuthenticated() ? res.render('dashboard', { user: req.user, guilds: req.user.guilds.filter(g => (g.permissions & 0x8) === 0x8) }) : res.redirect('/'));
+app.get('/logs', async (req, res) => req.isAuthenticated() ? (req.user.guilds.some(g => (g.permissions & 0x8) === 0x8) ? res.render('logs', { user: req.user, logs: await ServerLog.find().sort({ timestamp: -1 }).limit(500) }) : res.status(403).send("⛔ Zugriff verweigert.")) : res.redirect('/login?returnTo=/logs'));
 
 app.get('/dashboard/:guildId', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
-    const guild = client.guilds.cache.get(req.params.guildId);
-    if (!guild) return res.send("Bot nicht auf Server.");
+    const guild = client.guilds.cache.get(req.params.guildId); if (!guild) return res.send("Bot nicht auf Server.");
     let config = await GuildConfig.findOne({ guildId: guild.id }) || await GuildConfig.create({ guildId: guild.id });
-    
-    const users = await StreamUser.find({ guildId: guild.id });
-    const sortedUsers = getSortedUsers(users);
-    const enrichedUsers = enrichUserData(guild, sortedUsers); 
-
-    const roles = guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name }));
-    const channels = guild.channels.cache.filter(c => [2, 4].includes(c.type)).map(c => ({ id: c.id, name: c.name }));
-    res.render('settings', { guild, config, trackedUsers: enrichedUsers, roles, channels });
+    res.render('settings', { guild, config, trackedUsers: enrichUserData(guild, getSortedUsers(await StreamUser.find({ guildId: guild.id }))), roles: guild.roles.cache.filter(r => r.name !== '@everyone').map(r => ({ id: r.id, name: r.name })), channels: guild.channels.cache.filter(c => [2, 4].includes(c.type)).map(c => ({ id: c.id, name: c.name })) });
 });
 
-app.get('/roadmap', (req, res) => {
-    const projects = [
-        { title: "Live Bonus Hunt Tracker", desc: "Interaktives Web-Dashboard.", status: "Fertig", progress: 100 },
-        { title: "Automatisches Monats-Leaderboard", desc: "Fairer Wettkampf!", status: "Fertig", progress: 100 },
-        { title: "Zuschauer-Tippspiel (Guess the Win)", desc: "Community tippt.", status: "Thinktank", progress: 361 },
-        { title: "Erweiterte User-Profile", desc: "Eigene Profil-Seiten.", status: "Geplant", progress: 50 },
-        { title: "KI Stream Erkennung", desc: "The Bot is watching you.", status: "Geplant", progress: 15 }
-    ]; 
-    const firstGuild = client.guilds.cache.first();
-    const guildInfo = firstGuild ? { name: firstGuild.name, id: firstGuild.id } : { name: "JUICER BOT", id: "0" };
-    res.render('roadmap', { projects, guild: guildInfo });
-});
+app.get('/roadmap', (req, res) => res.render('roadmap', { projects: [{ title: "Live Bonus Hunt Tracker", desc: "Interaktives Web-Dashboard.", status: "Fertig", progress: 100 }, { title: "Automatisches Monats-Leaderboard", desc: "Fairer Wettkampf!", status: "Fertig", progress: 100 }, { title: "Zuschauer-Tippspiel", desc: "Community tippt.", status: "Thinktank", progress: 361 }, { title: "Erweiterte User-Profile", desc: "Eigene Profil-Seiten.", status: "Geplant", progress: 50 }, { title: "KI Stream Erkennung", desc: "The Bot is watching you.", status: "Geplant", progress: 15 }], guild: client.guilds.cache.first() || { name: "JUICER BOT", id: "0" } }));
 
 app.get('/profile/:guildId/:userId', async (req, res) => {
     try {
-        const { guildId, userId } = req.params;
-        const guild = client.guilds.cache.get(guildId);
-        if (!guild) return res.status(404).send("Server nicht gefunden.");
-
-        const userData = await StreamUser.findOne({ userId, guildId });
-        if (!userData) return res.status(404).send("User nicht gefunden.");
-
-        const now = new Date();
-        let effectiveTotal = userData.totalMinutes;
-        if (userData.isStreaming && userData.lastStreamStart) {
-            const diff = Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
-            if (diff > 0) effectiveTotal += diff;
-        }
-
-        let displayName = userData.username;
-        let avatar = userData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
-        try {
-            const member = await guild.members.fetch(userId);
-            if (member) { displayName = member.displayName; avatar = member.displayAvatarURL({ size: 512, extension: 'png' }); }
-        } catch (e) {}
-
-        res.render('profile', { guild, userData: { ...userData.toObject(), effectiveTotal, displayName, avatar }, ranks });
-    } catch (err) { console.error(err); res.status(500).send("Fehler beim Laden des Profils."); }
+        const guild = client.guilds.cache.get(req.params.guildId); const user = await StreamUser.findOne({ userId: req.params.userId, guildId: req.params.guildId });
+        if (!guild || !user) return res.status(404).send("Nicht gefunden.");
+        let obj = user.toObject(); obj.effectiveTotal = obj.totalMinutes + (obj.isStreaming && obj.lastStreamStart ? Math.max(0, Math.floor((new Date() - new Date(obj.lastStreamStart)) / 60000)) : 0);
+        const member = await guild.members.fetch(obj.userId).catch(()=>null);
+        obj.displayName = member?.displayName || obj.username; obj.avatar = member?.displayAvatarURL({ size: 512, extension: 'png' }) || obj.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+        res.render('profile', { guild, userData: obj, ranks });
+    } catch (err) { res.status(500).send("Fehler."); }
 });
 
-// --- DASHBOARD ACTIONS ---
 app.post('/dashboard/:guildId/adjust-time', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
-    const { userId, minutes } = req.body;
-    const adjustment = parseInt(minutes);
-    const userData = await StreamUser.findOne({ userId, guildId: req.params.guildId });
-    if (userData && !isNaN(adjustment)) {
-        log(`⚙️ DASHBOARD: Zeit für ${userData.username} um ${adjustment} Min. angepasst.`); 
-        userData.totalMinutes = Math.max(0, userData.totalMinutes + adjustment);
-        userData.monthlyMinutes = Math.max(0, userData.monthlyMinutes + adjustment); 
-        await userData.save(); await syncUserRoles(userData);
-    }
+    const u = await StreamUser.findOne({ userId: req.body.userId, guildId: req.params.guildId }); const m = parseInt(req.body.minutes);
+    if (u && !isNaN(m)) { u.totalMinutes = Math.max(0, u.totalMinutes + m); u.monthlyMinutes = Math.max(0, u.monthlyMinutes + m); await u.save(); await syncUserRoles(u); log(`⚙️ Zeit für ${u.username} angepasst.`); }
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
 app.post('/dashboard/:guildId/delete-user', async (req, res) => {
     if (!req.isAuthenticated()) return res.redirect('/');
-    const { userId } = req.body; const guildId = req.params.guildId;
-    try {
-        const userData = await StreamUser.findOne({ userId, guildId });
-        if (userData) {
-            const guild = client.guilds.cache.get(guildId);
-            const config = await GuildConfig.findOne({ guildId });
-            if (guild && config && config.rewards) {
-                const member = await guild.members.fetch(userId).catch(() => null);
-                if (member) await member.roles.remove(config.rewards.map(r => r.roleId)).catch(()=>{});
-            }
-            await StreamUser.deleteOne({ userId, guildId });
-            log(`🗑️ HARD RESET: User ${userData.username} gelöscht & Rollen entfernt.`);
-        }
-    } catch (err) {}
-    res.redirect(`/dashboard/${guildId}`);
+    const u = await StreamUser.findOne({ userId: req.body.userId, guildId: req.params.guildId });
+    if (u) { const c = await GuildConfig.findOne({ guildId: req.params.guildId }); const m = await client.guilds.cache.get(req.params.guildId)?.members.fetch(u.userId).catch(()=>null); if (m && c) await m.roles.remove(c.rewards.map(r => r.roleId)).catch(()=>{}); await StreamUser.deleteOne({ _id: u._id }); }
+    res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
 app.post('/dashboard/:guildId/save', async (req, res) => {
-    const { minutes, roleId } = req.body;
-    const role = client.guilds.cache.get(req.params.guildId).roles.cache.get(roleId);
-    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { $push: { rewards: { minutesRequired: parseInt(minutes), roleId, roleName: role.name } } });
+    const r = client.guilds.cache.get(req.params.guildId).roles.cache.get(req.body.roleId);
+    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { $push: { rewards: { minutesRequired: parseInt(req.body.minutes), roleId: req.body.roleId, roleName: r.name } } });
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
 app.post('/dashboard/:guildId/save-channels', async (req, res) => {
-    let { channels } = req.body;
-    if (!channels) channels = []; if (!Array.isArray(channels)) channels = [channels];
-    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { allowedChannels: channels }, { upsert: true });
+    await GuildConfig.findOneAndUpdate({ guildId: req.params.guildId }, { allowedChannels: Array.isArray(req.body.channels) ? req.body.channels : (req.body.channels ? [req.body.channels] : []) }, { upsert: true });
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
 app.post('/dashboard/:guildId/delete-reward', async (req, res) => {
-    const config = await GuildConfig.findOne({ guildId: req.params.guildId });
-    config.rewards.splice(req.body.rewardIndex, 1);
-    await config.save();
+    const c = await GuildConfig.findOne({ guildId: req.params.guildId }); if (c) { c.rewards.splice(req.body.rewardIndex, 1); await c.save(); }
     res.redirect(`/dashboard/${req.params.guildId}`);
 });
 
 // --- DISCORD EVENTS ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-    const args = message.content.split(' ');
-    const command = args[0].toLowerCase();
+    const args = message.content.split(' '); const command = args[0].toLowerCase();
 
-    if (command === '!setupfaq') {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-        await refreshFaqChannel(client, message.guild.id);
-        message.delete().catch(()=>{}); return;
+    if (command === '!setupfaq' && message.member.permissions.has(PermissionFlagsBits.Administrator)) { await refreshFaqChannel(client, message.guild.id); return message.delete().catch(()=>{}); }
+    if (command === '!faqadmin' && message.member.permissions.has(PermissionFlagsBits.Administrator)) { await message.channel.send({ embeds: [new EmbedBuilder().setTitle('⚙️ FAQ Admin Panel').setDescription('Klicke auf den Button, um Fragen hinzuzufügen.').setColor('#2ecc71')], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('admin_add_faq_btn').setLabel('➕ Frage hinzufügen').setStyle(ButtonStyle.Success))] }); return message.delete().catch(()=>{}); }
+
+    if (command === '!kick' && message.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
+        const t = message.mentions.members.first(); if (!t) return message.reply("⚠️ User markieren.");
+        if (!t.voice.channel) return message.reply("⚠️ User nicht im Voice.");
+        let cMsg = args.slice(2).join(' ');
+        try { await t.send(cMsg ? `🚨 **HINWEIS:**\n${cMsg}` : `🚨 Du wurdest aus dem Voice entfernt.`).catch(()=>{}); await t.voice.setChannel(null); message.reply({ embeds: [new EmbedBuilder().setTitle('🔇 Kick Erfolgreich').setDescription(`**User:** ${t}\n**Grund:** ${cMsg || "Standard"}`).setColor('#e74c3c')] }); } catch (err) {} return;
     }
 
-    if (command === '!faqadmin') {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-        const embed = new EmbedBuilder().setTitle('⚙️ FAQ Admin Panel').setDescription('Klicke auf diesen Button, um lautlos neue Fragen zum öffentlichen FAQ hinzuzufügen.').setColor('#2ecc71');
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('admin_add_faq_btn').setLabel('➕ Frage direkt hinzufügen').setStyle(ButtonStyle.Success));
-        await message.channel.send({ embeds: [embed], components: [row] });
-        message.delete().catch(()=>{}); return;
+    if (command === '!warnings' && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const t = message.mentions.members.first() || message.member; const w = await Warning.find({ userId: t.id, guildId: message.guild.id }).sort({ timestamp: -1 });
+        if (!w.length) return message.reply(`✅ ${t.user.username} hat 0 Verwarnungen.`);
+        return message.reply({ embeds: [new EmbedBuilder().setTitle(`Verwarnungen: ${t.user.username}`).setColor('Orange').setDescription(w.slice(0,10).map((x,i)=>`**${i+1}.** ${x.timestamp.toLocaleDateString('de-DE')} - *${x.reason}*`).join('\n')).setFooter({ text: `Gesamt: ${w.length}` })] });
     }
 
-    if (command === '!kick') {
-        if (!message.member.permissions.has(PermissionFlagsBits.MoveMembers)) return message.reply("⛔ Du hast keine Berechtigung.");
-        const targetUser = message.mentions.members.first();
-        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User.");
-        let customMessage = args.slice(2).join(' ');
-        const finalMessage = customMessage ? `🚨 **MODERATION HINWEIS:**\n\n${customMessage}` : `🚨 **ACHTUNG:** Du wurdest aus dem Voice entfernt.`;
-        if (!targetUser.voice.channel) return message.reply("⚠️ User ist in keinem Voice.");
-        try {
-            await targetUser.send(finalMessage).catch(() => {});
-            await targetUser.voice.setChannel(null);
-            message.reply({ embeds: [new EmbedBuilder().setTitle('🔇 Kick Erfolgreich').setDescription(`**User:** ${targetUser}\n**Grund:** ${customMessage}`).setColor('#e74c3c')] });
-        } catch (err) { message.reply("❌ Fehler beim Kicken."); }
-        return;
+    if (command === '!warn' && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const t = message.mentions.members.first(); if (!t) return message.reply("⚠️ User markieren.");
+        const r = args.slice(2).join(' ') || "Regelverstoß";
+        await Warning.create({ userId: t.id, guildId: message.guild.id, moderatorId: message.author.id, reason: r });
+        await t.send(`⚠️ **VERWARNUNG**\n**Grund:** ${r}`).catch(()=>{});
+        return message.reply({ embeds: [new EmbedBuilder().setTitle('⚠️ Verwarnt').setDescription(`**User:** ${t}\n**Grund:** ${r}`).setColor('Orange')] });
     }
 
-    if (command === '!warnings') {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-        const targetUser = message.mentions.members.first() || message.member;
-        const warnings = await Warning.find({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
-        if (warnings.length === 0) return message.reply(`✅ ${targetUser.user.username} hat 0 Verwarnungen.`);
-        const embed = new EmbedBuilder().setTitle(`Verwarnungen für ${targetUser.user.username}`).setColor('Orange').setFooter({ text: `Gesamt: ${warnings.length}` });
-        let desc = ""; warnings.slice(0, 10).forEach((w, index) => { desc += `**${index + 1}.** ${w.timestamp.toLocaleDateString('de-DE')} - *${w.reason}*\n`; });
-        return message.reply({ embeds: [embed.setDescription(desc)] });
+    if (command === '!delwarn' && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const t = message.mentions.members.first(); if (!t) return;
+        const w = await Warning.findOne({ userId: t.id, guildId: message.guild.id }).sort({ timestamp: -1 });
+        if (w) { await Warning.findByIdAndDelete(w._id); return message.reply(`✅ Letzte Verwarnung entfernt.`); } else return message.reply("✅ Keine Warns.");
     }
 
-    if (command === '!warn') {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-        const targetUser = message.mentions.members.first();
-        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User.");
-        let reason = args.slice(2).join(' ') || "Verstoß gegen die Regeln";
-        try {
-            await Warning.create({ userId: targetUser.id, guildId: message.guild.id, moderatorId: message.author.id, reason: reason });
-            await targetUser.send(`⚠️ **VERWARNUNG**\n**Grund:** ${reason}`).catch(() => {});
-            message.reply({ embeds: [new EmbedBuilder().setTitle('⚠️ Verwarnt').setDescription(`**User:** ${targetUser}\n**Grund:** ${reason}`).setColor('Orange')] });
-        } catch (err) {} return;
+    if (command === '!clearwarnings' && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        const t = message.mentions.members.first(); if (!t) return;
+        const r = await Warning.deleteMany({ userId: t.id, guildId: message.guild.id }); return message.reply(`✅ ${r.deletedCount} Warns gelöscht.`);
     }
 
-    if (command === '!delwarn') {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-        const targetUser = message.mentions.members.first();
-        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User.");
-        const lastWarning = await Warning.findOne({ userId: targetUser.id, guildId: message.guild.id }).sort({ timestamp: -1 });
-        if (!lastWarning) return message.reply("✅ Keine Verwarnungen.");
-        await Warning.findByIdAndDelete(lastWarning._id); return message.reply(`✅ Letzte Verwarnung entfernt.`);
+    if (command === '!check' && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const t = message.mentions.members.first(); if (!t?.voice.channel) return message.reply("⚠️ User nicht im Voice.");
+        const embed = new EmbedBuilder().setTitle(`📸 Stream: ${t.user.username}`).setImage(`https://discordapp.com/api/v6/streams/guild:${message.guild.id}:${t.voice.channel.id}:${t.id}/preview?v=${Date.now()}`).setColor(t.voice.streaming ? '#2ecc71' : '#e74c3c');
+        const modCh = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
+        if (modCh) { await modCh.send({ embeds: [embed] }); return message.reply(`✅ Bild in Mod-Kanal.`); } else return message.reply({ embeds: [embed] });
     }
 
-    if (command === '!clearwarnings') {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-        const targetUser = message.mentions.members.first();
-        if (!targetUser) return message.reply("⚠️ Bitte markiere einen User.");
-        const result = await Warning.deleteMany({ userId: targetUser.id, guildId: message.guild.id });
-        return message.reply(`✅ ${result.deletedCount} Verwarnungen gelöscht.`);
+    if (['!addtime', '!removetime', '!resettime'].includes(command) && message.channel.id === TIME_MOD_CHANNEL_ID && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const t = message.mentions.members.first(); if (!t) return message.reply(`⚠️ Markiere einen User.`);
+        let u = await StreamUser.findOne({ userId: t.id, guildId: message.guild.id }) || new StreamUser({ userId: t.id, guildId: message.guild.id, username: t.user.username });
+        if (command === '!resettime') { u.totalMinutes = 0; u.monthlyMinutes = 0; await u.save(); await syncUserRoles(u); return message.reply(`🗑️ Zeit auf 0.`); }
+        const m = parseInt(args[2]); if (isNaN(m) || m <= 0) return;
+        if (command === '!addtime') { u.totalMinutes += m; u.monthlyMinutes += m; } else { u.totalMinutes = Math.max(0, u.totalMinutes - m); u.monthlyMinutes = Math.max(0, u.monthlyMinutes - m); }
+        await u.save(); await syncUserRoles(u); return message.reply(command === '!addtime' ? `✅ +${m} Min.` : `📉 -${m} Min.`);
     }
 
-    if (command === '!check') {
-        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-        const targetUser = message.mentions.members.first();
-        if (!targetUser || !targetUser.voice.channel) return message.reply("⚠️ User nicht im Voice.");
-        const previewUrl = `https://discordapp.com/api/v6/streams/guild:${message.guild.id}:${targetUser.voice.channel.id}:${targetUser.id}/preview?v=${Date.now()}`;
-        const embed = new EmbedBuilder().setTitle(`📸 Stream-Check: ${targetUser.user.username}`).setImage(previewUrl).setColor(targetUser.voice.streaming ? '#2ecc71' : '#e74c3c');
-        const modChannel = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
-        if (modChannel) { await modChannel.send({ embeds: [embed] }); return message.reply(`✅ Check in Mod-Kanal gesendet.`); } else { return message.reply({ embeds: [embed] }); }
+    if (command === '!addtimeall' && message.channel.id === TIME_MOD_CHANNEL_ID && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const t = message.mentions.members; const m = parseInt(args[args.length - 1]); if (!t.size || isNaN(m)) return;
+        await StreamUser.updateMany({ userId: { $in: t.map(x=>x.id) }, guildId: message.guild.id }, { $inc: { totalMinutes: m, monthlyMinutes: m } });
+        for (const x of t.values()) { const u = await StreamUser.findOne({ userId: x.id }); if (u) await syncUserRoles(u); }
+        return message.reply(`✅ ${t.size} Usern ${m} Min. gegeben.`);
     }
 
-    if (['!addtime', '!removetime', '!resettime'].includes(command)) {
-        if (message.channel.id !== TIME_MOD_CHANNEL_ID || !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-        const targetUser = message.mentions.members.first();
-        if (!targetUser) return message.reply(`⚠️ Markiere einen User.`);
-        let userData = await StreamUser.findOne({ userId: targetUser.id, guildId: message.guild.id }) || new StreamUser({ userId: targetUser.id, guildId: message.guild.id, username: targetUser.user.username });
-        
-        if (command === '!addtime') {
-            const m = parseInt(args[2]); if (isNaN(m) || m <= 0) return;
-            userData.totalMinutes += m; userData.monthlyMinutes += m; await userData.save(); await syncUserRoles(userData);
-            return message.reply(`✅ +${m} Min.`);
-        }
-        if (command === '!removetime') {
-            const m = parseInt(args[2]); if (isNaN(m) || m <= 0) return;
-            userData.totalMinutes = Math.max(0, userData.totalMinutes - m); userData.monthlyMinutes = Math.max(0, userData.monthlyMinutes - m); 
-            await userData.save(); await syncUserRoles(userData);
-            return message.reply(`📉 -${m} Min.`);
-        }
-        if (command === '!resettime') {
-            userData.totalMinutes = 0; userData.monthlyMinutes = 0; await userData.save(); await syncUserRoles(userData);
-            return message.reply(`🗑️ Zeit auf 0 gesetzt.`);
-        }
+    if (command === '!sync' && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        for (const u of await StreamUser.find({ guildId: message.guild.id })) await syncUserRoles(u); return message.reply(`✅ Sync ok.`);
     }
 
-    if (command === '!addtimeall') {
-        if (message.channel.id !== TIME_MOD_CHANNEL_ID || !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-        const targetMembers = message.mentions.members; const minutes = parseInt(args[args.length - 1]);
-        if (targetMembers.size === 0 || isNaN(minutes)) return message.reply("⚠️ Fehlerhafte Eingabe.");
-        try {
-            await StreamUser.updateMany({ userId: { $in: targetMembers.map(m => m.id) }, guildId: message.guild.id }, { $inc: { totalMinutes: minutes, monthlyMinutes: minutes } });
-            for (const member of targetMembers.values()) { const u = await StreamUser.findOne({ userId: member.id }); if (u) await syncUserRoles(u); }
-            return message.reply(`✅ ${targetMembers.size} Usern ${minutes} Min. hinzugefügt.`);
-        } catch (err) {}
+    if (command === '!verify' && message.channel.id === VERIFY_CHANNEL_ID) {
+        await message.delete().catch(()=>{}); const p = args.slice(1).join(" "); if(!p) return message.channel.send(`⚠️ Provider angeben!`).then(m=>setTimeout(()=>m.delete(),5000));
+        const modCh = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
+        if (modCh) await modCh.send({ embeds: [new EmbedBuilder().setTitle('🎰 Neue Verifizierung').setDescription(`**User:** ${message.author}\n**Anbieter:** ${p}`).setColor('#f1c40f')], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`verify_accept_${message.author.id}_${p}`).setLabel('✅ Akzeptieren').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`verify_deny_${message.author.id}_${p}`).setLabel('❌ Ablehnen').setStyle(ButtonStyle.Danger))] });
+        message.channel.send(`✅ Anfrage gesendet!`).then(m=>setTimeout(()=>m.delete(),3000));
     }
 
-    if (command === '!sync') {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-        const allUsers = await StreamUser.find({ guildId: message.guild.id });
-        for (const u of allUsers) await syncUserRoles(u);
-        return message.reply(`✅ Sync abgeschlossen.`);
-    }
-
-    if (message.channel.id === VERIFY_CHANNEL_ID && command === '!verify') {
-        await message.delete().catch(() => {}); 
-        if (args.length < 2) return message.channel.send(`⚠️ Provider angeben!`).then(m=>setTimeout(()=>m.delete(),5000));
-        const providerName = args.slice(1).join(" "); 
-        const modChannel = message.guild.channels.cache.get(VERIFY_MOD_CHANNEL_ID);
-        const embed = new EmbedBuilder().setTitle('🎰 Neue Verifizierung').setDescription(`**User:** ${message.author}\n**Anbieter:** ${providerName}`).setColor('#f1c40f');
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`verify_accept_${message.author.id}_${providerName}`).setLabel('✅ Akzeptieren').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`verify_deny_${message.author.id}_${providerName}`).setLabel('❌ Ablehnen').setStyle(ButtonStyle.Danger)
-        );
-        await modChannel.send({ embeds: [embed], components: [row] });
-        message.channel.send(`✅ Anfrage für ${providerName} gesendet!`).then(m=>setTimeout(()=>m.delete(),3000)); return; 
-    }
-
-    if (command === '!rank') {
-        if (message.channel.id !== VERIFY_CHANNEL_ID) return;
-        const userData = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
-        const stats = getSortedUsers(userData ? [userData] : [])[0] || { effectiveTotal: 0 };
-        const totalMins = stats.effectiveTotal;
-        const displayName = message.member ? message.member.displayName : message.author.username;
-
-        if (totalMins === 0) return message.channel.send({ embeds: [new EmbedBuilder().setTitle('Noch kein Rang').setColor('#ff4747')] });
-        const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
-        const nextRank = ranks.indexOf(currentRank) - 1 >= 0 ? ranks[ranks.indexOf(currentRank) - 1] : null;
-
-        const embed = new EmbedBuilder().setTitle(`🎰 ${currentRank.name}`).setColor(currentRank.color).addFields({ name: '⌛ Gesamtzeit', value: `\`${Math.floor(totalMins/60)}h ${totalMins%60}m\``, inline: true });
-        if (nextRank) embed.addFields({ name: `Nächstes Ziel: ${nextRank.name}`, value: `Noch \`${Math.floor((nextRank.min - totalMins)/60)}h ${(nextRank.min - totalMins)%60}m\`` });
+    if (command === '!rank' && message.channel.id === VERIFY_CHANNEL_ID) {
+        const u = await StreamUser.findOne({ userId: message.author.id, guildId: message.guild.id });
+        const mins = (u?.totalMinutes || 0) + (u?.isStreaming && u?.lastStreamStart ? Math.floor((Date.now() - u.lastStreamStart)/60000) : 0);
+        if (mins === 0) return message.channel.send({ embeds: [new EmbedBuilder().setTitle('Kein Rang').setDescription('Du hast noch keine Zeit.').setColor('#ff4747')] });
+        const cRank = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1]; const nRank = ranks[ranks.indexOf(cRank) - 1];
+        const embed = new EmbedBuilder().setAuthor({ name: `Status: ${message.author.username}`, iconURL: message.author.displayAvatarURL() }).setTitle(`🎰 ${cRank.name}`).setColor(cRank.color).addFields({ name: '⌛ Zeit', value: `\`${Math.floor(mins/60)}h ${mins%60}m\``, inline: true });
+        if (nRank) embed.addFields({ name: `Next: ${nRank.name}`, value: `Noch \`${Math.floor((nRank.min - mins)/60)}h ${(nRank.min - mins)%60}m\`` });
         message.channel.send({ embeds: [embed] });
     }
 });
 
-// --- TRACKING LOGIK ---
 async function handleStreamStart(userId, guildId, username, avatarURL) {
-    const existing = await StreamUser.findOne({ userId, guildId });
-    if (existing && existing.isStreaming) return; 
-    log(`🟢 START: ${username}`);
+    const u = await StreamUser.findOne({ userId, guildId }); if (u?.isStreaming) return;
     await StreamUser.findOneAndUpdate({ userId, guildId }, { isStreaming: true, lastStreamStart: new Date(), username, avatar: avatarURL }, { upsert: true });
-    const logChannel = client.channels.cache.get(STREAM_LOG_CHANNEL_ID);
-    if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🟢 Stream Start').setDescription(`<@${userId}>`).setColor('#2ecc71')] }).catch(()=>{});
+    client.channels.cache.get(STREAM_LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder().setTitle('🟢 Stream Start').setDescription(`<@${userId}>`).setColor('#2ecc71')] }).catch(()=>{});
 }
 
-async function handleStreamStop(userId, guildId, isAutoStop = false) {
-    const userData = await StreamUser.findOne({ userId, guildId });
-    if (userData?.isStreaming) {
-        const minutes = Math.round((new Date() - userData.lastStreamStart) / 60000);
-        userData.totalMinutes += Math.max(0, minutes); userData.monthlyMinutes += Math.max(0, minutes); 
-        userData.isStreaming = false; userData.lastStreamStart = null; await userData.save();
-        const logChannel = client.channels.cache.get(STREAM_LOG_CHANNEL_ID);
-        if (logChannel) {
-            const embed = new EmbedBuilder().setTitle(isAutoStop ? '🛡️ Auto-Stopp' : '🔴 Stream Beendet').setDescription(`User: <@${userId}>\nDauer: ${minutes} Min.`).setColor('#e74c3c');
-            logChannel.send({ embeds: [embed] }).catch(()=>{});
-        }
+async function handleStreamStop(userId, guildId, isAuto = false) {
+    const u = await StreamUser.findOne({ userId, guildId });
+    if (u?.isStreaming) {
+        const m = Math.floor((Date.now() - u.lastStreamStart) / 60000);
+        u.totalMinutes += Math.max(0, m); u.monthlyMinutes += Math.max(0, m); u.isStreaming = false; u.lastStreamStart = null; await u.save();
+        client.channels.cache.get(STREAM_LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder().setTitle(isAuto ? '🛡️ Auto-Stopp' : '🔴 Stream Stopp').setDescription(`<@${userId}>\nDauer: ${m} Min.`).setColor('#e74c3c')] }).catch(()=>{});
     }
 }
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     if (oldState.channelId === newState.channelId && oldState.streaming === newState.streaming) return;
-    const guildId = newState.guild.id;
-    const config = await GuildConfig.findOne({ guildId });
-    const channelsToCheck = [oldState.channel, newState.channel].filter(Boolean);
-
-    for (const channel of channelsToCheck) {
-        const isAllowedChannel = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
-        const hasViewers = channel.members.filter(m => !m.user.bot).size >= 2;
-
-        for (const [memberId, member] of channel.members) {
-            if (member.user.bot) continue;
-            if (member.roles.cache.has(BAN_ROLE_ID) && isAllowedChannel && member.voice.streaming) {
-                try { await member.voice.setChannel(null); continue; } catch(e){}
-            }
-            const isStreamingNow = member.voice.streaming && isAllowedChannel && hasViewers;
-            const userData = await StreamUser.findOne({ userId: memberId, guildId });
-            if (isStreamingNow && (!userData || !userData.isStreaming)) await handleStreamStart(memberId, guildId, member.user.username, member.user.displayAvatarURL());
-            else if (!isStreamingNow && userData && userData.isStreaming) await handleStreamStop(memberId, guildId);
+    const config = await GuildConfig.findOne({ guildId: newState.guild.id });
+    for (const ch of [oldState.channel, newState.channel].filter(Boolean)) {
+        const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(ch.id);
+        const hasViewers = ch.members.filter(m => !m.user.bot).size >= 2;
+        for (const [mId, m] of ch.members) {
+            if (m.user.bot) continue;
+            if (m.roles.cache.has(BAN_ROLE_ID) && isAllowed && m.voice.streaming) { try { await m.voice.setChannel(null); continue; } catch(e){} }
+            const isS = m.voice.streaming && isAllowed && hasViewers;
+            const u = await StreamUser.findOne({ userId: mId, guildId: newState.guild.id });
+            if (isS && (!u || !u.isStreaming)) await handleStreamStart(mId, newState.guild.id, m.user.username, m.user.displayAvatarURL());
+            else if (!isS && u?.isStreaming) await handleStreamStop(mId, newState.guild.id);
         }
     }
 });
 
-// --- INTERACTION LOGIK ---
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId.startsWith('verify_')) {
-        const parts = interaction.customId.split('_'); const type = parts[1]; const targetId = parts[2]; const provider = parts.slice(3).join('_');
         if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) return interaction.reply({ content: "⛔ Keine Rechte.", ephemeral: true });
-        const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
-        if (type === 'accept' && targetMember) {
-            let role = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === provider.toLowerCase()) || await interaction.guild.roles.create({ name: provider, color: '#3498db' });
-            await targetMember.roles.add(role); targetMember.send(`✅ Verifizierung für ${provider} angenommen!`).catch(()=>{});
+        const parts = interaction.customId.split('_'); const t = await interaction.guild.members.fetch(parts[2]).catch(()=>null); const p = parts.slice(3).join('_');
+        if (parts[1] === 'accept' && t) {
+            let r = interaction.guild.roles.cache.find(x => x.name.toLowerCase() === p.toLowerCase()) || await interaction.guild.roles.create({ name: p, color: '#3498db' });
+            await t.roles.add(r); t.send(`✅ Verifizierung für ${p} angenommen!`).catch(()=>{});
             return interaction.update({ embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor('#2ecc71').addFields({ name: 'Status', value: `✅ Akzeptiert` })], components: [] });
-        } else if (type === 'deny') {
-            if (targetMember) targetMember.send(`❌ Verifizierung abgelehnt.`).catch(()=>{});
+        } else if (parts[1] === 'deny') {
+            if (t) t.send(`❌ Verifizierung abgelehnt.`).catch(()=>{});
             return interaction.update({ embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor('#e74c3c').addFields({ name: 'Status', value: `❌ Abgelehnt` })], components: [] });
         }
     }
 
-    // FAQ User Question
     if (interaction.isButton() && interaction.customId === 'ask_faq_btn') {
-        const modal = new ModalBuilder().setCustomId('modal_ask_faq').setTitle('Stelle deine Frage');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('faq_question_input').setLabel("Frage").setStyle(TextInputStyle.Paragraph).setRequired(true)));
-        return interaction.showModal(modal);
+        const m = new ModalBuilder().setCustomId('modal_ask_faq').setTitle('Stelle deine Frage');
+        m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('q').setLabel("Frage").setStyle(TextInputStyle.Paragraph).setRequired(true)));
+        return interaction.showModal(m);
     }
     if (interaction.isModalSubmit() && interaction.customId === 'modal_ask_faq') {
-        const q = interaction.fields.getTextInputValue('faq_question_input');
-        const modChannel = interaction.client.channels.cache.get(MOD_FAQ_CHANNEL_ID);
-        if (!modChannel) return;
-        const embed = new EmbedBuilder().setTitle('❓ Neue FAQ Anfrage').setDescription(`**Von:** ${interaction.user}\n\n**Frage:**\n${q}`).setColor('#3498db');
+        const ch = interaction.client.channels.cache.get(MOD_FAQ_CHANNEL_ID); if (!ch) return;
         const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`faq_ans_${interaction.user.id}`).setLabel('✏️ Beantworten').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`faq_rej_${interaction.user.id}`).setLabel('🗑️ Ablehnen').setStyle(ButtonStyle.Danger));
-        await modChannel.send({ embeds: [embed], components: [row] });
-        return interaction.reply({ content: '✅ Frage gesendet!', ephemeral: true });
+        await ch.send({ embeds: [new EmbedBuilder().setTitle('❓ Neue FAQ Anfrage').setDescription(`**Von:** ${interaction.user}\n\n**Frage:**\n${interaction.fields.getTextInputValue('q')}`).setColor('#3498db')], components: [row] });
+        return interaction.reply({ content: '✅ Gesendet!', ephemeral: true });
     }
-
-    // FAQ Mod Answer
     if (interaction.isButton() && interaction.customId.startsWith('faq_ans_')) {
-        const userId = interaction.customId.split('_')[2];
-        const origQ = interaction.message.embeds[0].description.split('**Frage:**\n')[1];
-        const modal = new ModalBuilder().setCustomId(`modal_ans_faq_${userId}_${interaction.message.id}`).setTitle('FAQ Beantworten');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('faq_edit_question').setLabel("Frage").setStyle(TextInputStyle.Paragraph).setValue(origQ)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('faq_answer_input').setLabel("Antwort").setStyle(TextInputStyle.Paragraph)));
-        return interaction.showModal(modal);
+        const m = new ModalBuilder().setCustomId(`modal_ans_faq_${interaction.customId.split('_')[2]}_${interaction.message.id}`).setTitle('FAQ Beantworten');
+        m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('q').setLabel("Frage").setStyle(TextInputStyle.Paragraph).setValue(interaction.message.embeds[0].description.split('**Frage:**\n')[1])), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('a').setLabel("Antwort").setStyle(TextInputStyle.Paragraph).setRequired(true)));
+        return interaction.showModal(m);
     }
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_ans_faq_')) {
-        const parts = interaction.customId.split('_'); const userId = parts[3];
-        await FaqEntry.create({ guildId: interaction.guild.id, question: interaction.fields.getTextInputValue('faq_edit_question'), answer: interaction.fields.getTextInputValue('faq_answer_input') });
+        await FaqEntry.create({ guildId: interaction.guild.id, question: interaction.fields.getTextInputValue('q'), answer: interaction.fields.getTextInputValue('a') });
         await refreshFaqChannel(interaction.client, interaction.guild.id);
         await interaction.message.edit({ embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor('#2ecc71').addFields({ name: 'Status', value: `✅ Beantwortet` })], components: [] });
-        return interaction.reply({ content: '✅ Im FAQ gepostet!', ephemeral: true });
+        return interaction.reply({ content: '✅ Gepostet!', ephemeral: true });
     }
-
-    // FAQ Mod Reject
     if (interaction.isButton() && interaction.customId.startsWith('faq_rej_')) {
-        const userId = interaction.customId.split('_')[2];
-        const modal = new ModalBuilder().setCustomId(`modal_rej_faq_${userId}_${interaction.message.id}`).setTitle('Frage Ablehnen');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('faq_reject_reason').setLabel("Grund").setStyle(TextInputStyle.Short).setValue("Bereits beantwortet.")));
-        return interaction.showModal(modal);
+        const m = new ModalBuilder().setCustomId(`modal_rej_faq_${interaction.customId.split('_')[2]}_${interaction.message.id}`).setTitle('Frage Ablehnen');
+        m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('r').setLabel("Grund").setStyle(TextInputStyle.Short).setValue("Bereits beantwortet.")));
+        return interaction.showModal(m);
     }
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_rej_faq_')) {
         await interaction.message.edit({ embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor('#e74c3c').addFields({ name: 'Status', value: `🗑️ Abgelehnt` })], components: [] });
         return interaction.reply({ content: '✅ Abgelehnt.', ephemeral: true });
     }
-
-    // FAQ Admin Direct
-    if (interaction.isButton() && interaction.customId === 'admin_add_faq_btn') {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-        const modal = new ModalBuilder().setCustomId('modal_admin_add_faq').setTitle('FAQ direkt posten');
-        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('faq_edit_question').setLabel("Frage").setStyle(TextInputStyle.Paragraph)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('faq_answer_input').setLabel("Antwort").setStyle(TextInputStyle.Paragraph)));
-        return interaction.showModal(modal);
+    if (interaction.isButton() && interaction.customId === 'admin_add_faq_btn' && interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        const m = new ModalBuilder().setCustomId('modal_admin_add_faq').setTitle('FAQ direkt posten');
+        m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('q').setLabel("Frage").setStyle(TextInputStyle.Paragraph)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('a').setLabel("Antwort").setStyle(TextInputStyle.Paragraph)));
+        return interaction.showModal(m);
     }
     if (interaction.isModalSubmit() && interaction.customId === 'modal_admin_add_faq') {
-        await FaqEntry.create({ guildId: interaction.guild.id, question: interaction.fields.getTextInputValue('faq_edit_question'), answer: interaction.fields.getTextInputValue('faq_answer_input') });
+        await FaqEntry.create({ guildId: interaction.guild.id, question: interaction.fields.getTextInputValue('q'), answer: interaction.fields.getTextInputValue('a') });
         await refreshFaqChannel(interaction.client, interaction.guild.id);
         return interaction.reply({ content: '✅ Hinzugefügt!', ephemeral: true });
     }
 });
 
-// --- INTERVALLE ---
 setInterval(async () => {
-    const now = new Date(); const allUsers = await StreamUser.find({});
-    for (const userData of allUsers) {
-        if (userData.isStreaming) {
-            const member = await client.guilds.cache.get(userData.guildId)?.members.fetch(userData.userId).catch(()=>null);
-            if (!member || !member.voice.channel || !member.voice.streaming) { await handleStreamStop(userData.userId, userData.guildId, true); continue; }
+    const now = Date.now();
+    for (const u of await StreamUser.find({})) {
+        if (u.isStreaming) {
+            const m = await client.guilds.cache.get(u.guildId)?.members.fetch(u.userId).catch(()=>null);
+            if (!m?.voice.channel || !m.voice.streaming) { await handleStreamStop(u.userId, u.guildId, true); continue; }
         }
-        await syncUserRoles(userData, now);
-        let totalMins = userData.totalMinutes;
-        if (userData.isStreaming && userData.lastStreamStart) totalMins += Math.floor((now - new Date(userData.lastStreamStart)) / 60000);
-        const currentRank = ranks.find(r => totalMins >= r.min) || ranks[ranks.length - 1];
-        if (userData.lastNotifiedRank !== currentRank.name) {
-            const ch = await client.channels.fetch(VERIFY_CHANNEL_ID).catch(()=>null);
-            if (ch && ranks.findIndex(r=>r.name===currentRank.name) < ranks.findIndex(r=>r.name===userData.lastNotifiedRank)) ch.send({ content: `<@${userData.userId}> Neues Level: **${currentRank.name}**!` });
-            userData.lastNotifiedRank = currentRank.name; await userData.save();
+        await syncUserRoles(u, new Date(now));
+        const mins = u.totalMinutes + (u.isStreaming && u.lastStreamStart ? Math.floor((now - u.lastStreamStart) / 60000) : 0);
+        const cRank = ranks.find(r => mins >= r.min) || ranks[ranks.length - 1];
+        if (u.lastNotifiedRank !== cRank.name) {
+            if (ranks.findIndex(r=>r.name===cRank.name) < ranks.findIndex(r=>r.name===u.lastNotifiedRank)) client.channels.cache.get(VERIFY_CHANNEL_ID)?.send({ content: `<@${u.userId}> Level Up: **${cRank.name}**!` }).catch(()=>{});
+            u.lastNotifiedRank = cRank.name; await u.save();
         }
     }
-}, 5 * 60000);
+}, 300000);
 
 cron.schedule('0 0 1 * *', async () => { await StreamUser.updateMany({}, { $set: { monthlyMinutes: 0 } }); log(`✅ Monats-Reset.`); });
 
 client.once('ready', async () => {
-    log(`✅ Bot online als ${client.user.tag}`);
+    log(`✅ Bot online: ${client.user.tag}`);
     setTimeout(async () => {
         await StreamUser.updateMany({}, { isStreaming: false, lastStreamStart: null });
         for (const guild of client.guilds.cache.values()) {
             await guild.members.fetch().catch(()=>{});
-            const config = await GuildConfig.findOne({ guildId: guild.id });
-            for (const channel of guild.channels.cache.filter(c => c.type === 2).values()) {
-                const isAllowed = !config?.allowedChannels?.length || config.allowedChannels.includes(channel.id);
-                if (isAllowed && channel.members.filter(m=>!m.user.bot).size >= 2) {
-                    for (const member of channel.members.values()) if (member.voice.streaming) await handleStreamStart(member.id, guild.id, member.user.username, member.user.displayAvatarURL());
+            const conf = await GuildConfig.findOne({ guildId: guild.id });
+            for (const ch of guild.channels.cache.filter(c => c.type === 2).values()) {
+                if ((!conf?.allowedChannels?.length || conf.allowedChannels.includes(ch.id)) && ch.members.filter(m=>!m.user.bot).size >= 2) {
+                    for (const m of ch.members.values()) if (m.voice.streaming) await handleStreamStart(m.id, guild.id, m.user.username, m.user.displayAvatarURL());
                 }
             }
         }
@@ -957,35 +488,36 @@ client.once('ready', async () => {
     }, 5000); 
 });
 
-// --- BIG BROTHER LOGS (GEFIXT) ---
-setInterval(async () => { await ServerLog.deleteMany({ timestamp: { $lt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } }); }, 24 * 60 * 60 * 1000);
-
-client.on('messageDelete', async (m) => { if(!m.partial && !m.author?.bot) saveLog('MSG_DELETE', m.author.username, m.author.id, `Gelöscht:\n"${m.content}"`, m.channel.name); });
+setInterval(async () => { await ServerLog.deleteMany({ timestamp: { $lt: new Date(Date.now() - 1209600000) } }); }, 86400000);
+client.on('messageDelete', async m => { if(!m.partial && !m.author?.bot) saveLog('MSG_DELETE', m.author.username, m.author.id, `Gelöscht:\n"${m.content}"`, m.channel.name); });
 client.on('messageUpdate', async (o, n) => { if(!o.partial && !o.author?.bot && o.content!==n.content) saveLog('MSG_EDIT', o.author.username, o.author.id, `Alt: "${o.content}"\nNeu: "${n.content}"`, o.channel.name); });
 
-client.on('voiceStateUpdate', (oldState, newState) => {
-    if (newState.member?.user?.bot) return;
-    const user = newState.member.user;
-    const oldName = oldState.channel?.name || 'Unbekannt';
-    const newName = newState.channel?.name || oldName;
+client.on('voiceStateUpdate', (o, n) => {
+    if (n.member?.user?.bot) return;
+    const u = n.member.user; const oN = o.channel?.name || 'Unbekannt'; const nN = n.channel?.name || oN;
+    if (!o.channelId && n.channelId) saveLog('VOICE_JOIN', u.username, u.id, `Beigetreten`, nN);
+    else if (o.channelId && !n.channelId) saveLog('VOICE_LEAVE', u.username, u.id, `Verlassen`, oN);
+    else if (o.channelId !== n.channelId) saveLog('VOICE_MOVE', u.username, u.id, `Gewechselt von #${oN}`, nN);
 
-    if (!oldState.channelId && newState.channelId) saveLog('VOICE_JOIN', user.username, user.id, `Beigetreten`, newName);
-    else if (oldState.channelId && !newState.channelId) saveLog('VOICE_LEAVE', user.username, user.id, `Verlassen`, oldName);
-    else if (oldState.channelId !== newState.channelId) saveLog('VOICE_MOVE', user.username, user.id, `Gewechselt von #${oldName}`, newName);
-
-    if (!oldState.streaming && newState.streaming) saveLog('VOICE_STREAM_ON', user.username, user.id, `Stream gestartet`, newName);
-    else if (oldState.streaming && !newState.streaming) saveLog('VOICE_STREAM_OFF', user.username, user.id, `Stream beendet`, newName);
+    if (!o.streaming && n.streaming) saveLog('VOICE_STREAM_ON', u.username, u.id, `Stream gestartet`, nN);
+    else if (o.streaming && !n.streaming) saveLog('VOICE_STREAM_OFF', u.username, u.id, `Stream beendet`, nN);
     
-    if (!oldState.selfVideo && newState.selfVideo) saveLog('VOICE_CAM_ON', user.username, user.id, `Kamera an`, newName);
-    if (!oldState.selfMute && newState.selfMute) saveLog('VOICE_MUTE', user.username, user.id, `Selbst gemutet`, newName);
-    if (!oldState.selfDeaf && newState.selfDeaf) saveLog('VOICE_DEAF', user.username, user.id, `Taub gestellt`, newName);
-    if (!oldState.serverMute && newState.serverMute) saveLog('VOICE_SERVER_MUTE', user.username, user.id, `Vom Admin gemutet`, newName);
+    if (!o.selfVideo && n.selfVideo) saveLog('VOICE_CAM_ON', u.username, u.id, `Kamera an`, nN);
+    if (!o.selfMute && n.selfMute) saveLog('VOICE_MUTE', u.username, u.id, `Selbst gemutet`, nN);
+    if (!o.selfDeaf && n.selfDeaf) saveLog('VOICE_DEAF', u.username, u.id, `Taub gestellt`, nN);
+    if (!o.serverMute && n.serverMute) saveLog('VOICE_SERVER_MUTE', u.username, u.id, `Vom Admin gemutet`, nN);
 });
 
-client.on('guildMemberAdd', (m) => saveLog('USER_JOIN', m.user.username, m.user.id, `Beigetreten. Account vom: ${m.user.createdAt.toLocaleDateString('de-DE')}`));
-client.on('guildMemberRemove', (m) => saveLog('USER_LEAVE', m.user.username, m.user.id, `Verlassen/Gekickt.`));
+client.on('guildMemberAdd', m => saveLog('USER_JOIN', m.user.username, m.user.id, `Beigetreten.`));
+client.on('guildMemberRemove', m => saveLog('USER_LEAVE', m.user.username, m.user.id, `Verlassen/Gekickt.`));
+client.on('guildMemberUpdate', (o, n) => {
+    if (o.roles.cache.size < n.roles.cache.size) { const r = n.roles.cache.find(x => !o.roles.cache.has(x.id)); if (r) saveLog('ROLE_ADD', n.user.username, n.user.id, `Rolle erhalten: ${r.name}`); } 
+    else if (o.roles.cache.size > n.roles.cache.size) { const r = o.roles.cache.find(x => !n.roles.cache.has(x.id)); if (r) saveLog('ROLE_REMOVE', n.user.username, n.user.id, `Rolle entfernt: ${r.name}`); }
+    if (o.nickname !== n.nickname) saveLog('USER_NICKNAME', n.user.username, n.user.id, `Nickname geändert`);
+});
+client.on('guildBanAdd', b => saveLog('USER_BAN', b.user.username, b.user.id, `Wurde gebannt.`));
+client.on('guildBanRemove', b => saveLog('USER_UNBAN', b.user.username, b.user.id, `Wurde entbannt.`));
 
 mongoose.connect(process.env.MONGO_URI).then(() => log('✅ MongoDB verbunden')).catch(e => log(`❌ MongoDB Fehler: ${e.message}`));
 app.listen(process.env.PORT || 3000, '0.0.0.0', () => log(`🌐 Webserver läuft`));
 client.login(process.env.TOKEN);
-
