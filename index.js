@@ -134,36 +134,45 @@ async function refreshFaqChannel(client, guildId) {
 
     // Hole alle FAQs sortiert nach Erstellungsdatum
     const faqs = await FaqEntry.find({ guildId }).sort({ createdAt: 1 });
-    const embeds = [];
     
-    // Das Haupt-Intro
+    // 1. Vorherige Nachrichten im FAQ-Channel löschen (damit es immer sauber bleibt)
+    const fetched = await faqChannel.messages.fetch({ limit: 50 });
+    try {
+        await faqChannel.bulkDelete(fetched);
+    } catch(e) {
+        // Fallback, falls Nachrichten älter als 14 Tage sind
+        for (const msg of fetched.values()) {
+            await msg.delete().catch(() => {});
+        }
+    }
+
+    // 2. Das Haupt-Intro senden
     const introEmbed = new EmbedBuilder()
         .setTitle('📚 Community FAQ & Hilfe')
-        .setDescription('Hier findest du Antworten auf die häufigsten Fragen.\n\nDeine Frage ist nicht dabei? Klicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!')
+        .setDescription('Hier findest du detaillierte Antworten auf die häufigsten Fragen aus der Community.')
         .setColor('#fbbf24');
-    embeds.push(introEmbed);
+    await faqChannel.send({ embeds: [introEmbed] });
 
-    // Neues Design: Wir verpacken immer max. 4 Fragen in ein eigenes, sauberes Embed (bessere visuelle Trennung)
-    for (let i = 0; i < faqs.length; i += 4) {
-        const chunk = faqs.slice(i, i + 4);
+    // 3. Fragen in 5er-Blöcke aufteilen und als EINZELNE Nachrichten senden (Umgeht das 6000-Zeichen-Limit!)
+    for (let i = 0; i < faqs.length; i += 5) {
+        const chunk = faqs.slice(i, i + 5);
         let descriptionText = "";
         
         chunk.forEach(faq => {
-            // Blockzitat-Design (>) für die Antwort und eine dezente Trennlinie
             descriptionText += `**❓ ${faq.question}**\n> 💬 ${faq.answer}\n\n──────────────────────────────\n\n`;
         });
 
-        // Die allerletzte Trennlinie im Block entfernen
+        // Die letzte Trennlinie im Block sauber entfernen
         descriptionText = descriptionText.replace(/\n\n──────────────────────────────\n\n$/, '');
 
         const embed = new EmbedBuilder()
-            .setColor('#2b2d31') // Ein schickes Discord-Grau, damit die Fragen weicher wirken
+            .setColor('#2b2d31')
             .setDescription(descriptionText);
         
-        embeds.push(embed);
+        await faqChannel.send({ embeds: [embed] });
     }
 
-    // Die Buttons
+    // 4. Die Buttons GANZ UNTEN anheften
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('ask_faq_btn')
@@ -175,18 +184,11 @@ async function refreshFaqChannel(client, guildId) {
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // Sucht die bestehende Master-Nachricht
-    const messages = await faqChannel.messages.fetch({ limit: 10 });
-    const botMessage = messages.find(m => m.author.id === client.user.id && m.components.length > 0);
+    const actionEmbed = new EmbedBuilder()
+        .setDescription('**Deine Frage ist nicht dabei?**\nKlicke auf den Button unten, um sie direkt an unser Moderations-Team zu senden!')
+        .setColor('#3498db');
 
-    if (botMessage) {
-        // Master-Nachricht existiert -> Einfach aktualisieren!
-        await botMessage.edit({ embeds, components: [row] });
-    } else {
-        // Keine da -> Alte Nachrichten aufräumen und neue posten
-        await faqChannel.bulkDelete(10).catch(()=>{});
-        await faqChannel.send({ embeds, components: [row] });
-    }
+    await faqChannel.send({ embeds: [actionEmbed], components: [row] });
 }
 
 // --- HELPER FÜR BONUS HUNT EMBED ---
@@ -1670,4 +1672,3 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.TOKEN);
-
